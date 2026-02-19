@@ -158,3 +158,47 @@ pairplot with log_price : cf. stat_des_some_vars_pairplot
     Removes all prices_sqm below quantile 0.8 and above quantile 0.2. Impact : 
         - a minimal : CV score = 6% +-1%  
         - all features : CV score = 25% +-2%
+
+Data set : 
+   - 7 col (['depcom', 'x', 'y', 'dteloc', 'dnbppr', 'dnbcha', 'dsupdc'])
+   - n_ops : 322805 
+
+= Model is : GradientBoostingRegressor 
+  Metrics are : 
+   - MAPE : 0.151 
+   - R2 : 0.172 
+  with an elapsed time of 28.503s
+= Model is : HistGradientBoostingRegressor 
+  Metrics are : 
+   - MAPE : 0.149 
+   - R2 : 0.189 
+  with an elapsed time of 1.353s
+= Model is : RandomForestRegressor 
+  Metrics are : 
+   - MAPE : 0.161 
+   - R2 : 0.027 
+  with an elapsed time of 108.227s
+Data set : 
+   - 27 col (['anneemut', 'dteloc', 'jannath', 'ccodep', 'depcom', 'x', 'y', 'distance_ltm', 'dnbniv', 'dnbbai', 'dnbdou', 'dnblav', 'dnbwc', 'dnbppr', 'dnbsam', 'dnbcha', 'dnbcu8', 'dnbcu9', 'dnbsea', 'dnbann', 'dnbpdc', 'dsupdc', 'dniv', 'nb_terrasses', 'nb_greniers', 'nb_caves', 'nb_autresdep'])
+   - n_ops : 322805 
+
+= Model is : GradientBoostingRegressor 
+  Metrics are : 
+   - MAPE : 0.119 
+   - R2 : 0.427 
+  with an elapsed time of 63.356s
+= Model is : HistGradientBoostingRegressor 
+  Metrics are : 
+   - MAPE : 0.113 
+   - R2 : 0.469 
+  with an elapsed time of 2.295s
+= Model is : RandomForestRegressor 
+  Metrics are : 
+   - MAPE : 0.113 
+   - R2 : 0.463 
+  with an elapsed time of 242.980s
+
+HistGradientBoostingRegressor => far better model
+
+dummyregressor :
+- score is 0 so model performs much better
