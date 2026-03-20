@@ -1,4 +1,7 @@
 # %%
+import pandas as pd
+
+# %%
 dict_fr_en = {
   'idmutation':['trans_id', 'Unique identifier code of the transaction'],
   'datemut':['trans_date', 'Date of the official certified transaction'],
@@ -7,7 +10,7 @@ dict_fr_en = {
   'idnatmut':['trans_type_code','Type of transaction'], # Different types of transactions
   'libnatmut':['trans_type_label','Type of transaction'],
   'valeurfonc':['price','Price of the transaction'],  
-  'dteloc':['prop_type','Type of property : a flat or a house'],
+  'dteloc':['prop_type','Type of property : 1 represents a flat and 2 a house'],
   'jannath':['prop_year','Year of contruction of the property'],
   'ccodep':['prop_loc_dep','Department code where the property is located'],  # list of departments in France  - overseas yes but Alsace Moselle nope
   'depcom':['prop_loc_',"Official city's code where the property is located"],  # COG : official geographical code https://www.insee.fr/en/metadonnees/source/serie/s2084
@@ -51,12 +54,12 @@ dict_fr_en = {
   'dnivrel':['nth_floor_rel', 'Relative floor of the property (from 0, ground floor, to 1, last floor)']
  }
 # %%
-res = pd.DataFrame.from_dict(dict_fr_en, orient="index", columns=["name_en", "explanation"]
-    ).reset_index(names='name_fr').sort("name_en")
+res = pd.DataFrame.from_dict(dict_fr_en, orient="index", columns=["Name of the variable", "Explanation"]
+    ).reset_index(names='name_fr').sort_values("Name of the variable")
 
 res[' '] = range(1, res.shape[0]+1)
 
-with open('temp.txt', 'w') as f: 
-    f.write(res[[" ", "name_en", "explanation"]].to_markdown(index=False))
+with open('table_dict.Qmd', 'w') as f: 
+    f.write(res[[" ", "Name of the variable", "Explanation"]].to_markdown(index=False))
 
 # %%

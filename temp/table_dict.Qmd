@@ -1,0 +1,51 @@
+|     | Name of the variable   | Explanation                                                                             |
+|----:|:-----------------------|:----------------------------------------------------------------------------------------|
+|   1 | dist_tosea             | Distance of the property to the nearest seashore - capped at 10km                       |
+|   2 | dist_tosea_corr        | Corrected distance of the property to the nearest seashore - capped at 10km             |
+|   3 | elec                   |                                                                                         |
+|   4 | elevator               |                                                                                         |
+|   5 | farea                  | Reported floor area of the property                                                     |
+|   6 | gas                    |                                                                                         |
+|   7 | gteglc                 |                                                                                         |
+|   8 | gteglc                 |                                                                                         |
+|   9 | gteglc                 |                                                                                         |
+|  10 | n_annex                | Number of annexes reported in the property                                              |
+|  11 | n_attic                | Number of attics reported in the property                                               |
+|  12 | n_basmt                | Number of basements reported in the property                                            |
+|  13 | n_bath                 | Number of bathrooms reported in the property                                            |
+|  14 | n_eatr                 | Number of eating rooms reported in the property                                         |
+|  15 | n_floors               | Number of floor in the property (either if a building or a house)                       |
+|  16 | n_garage               | Number of garages reported in the property                                              |
+|  17 | n_kit8                 | Number of kitchens reported in the property with an area of less than 8 square meters   |
+|  18 | n_kit9                 | Number of kitchens reported in the property with an area of larger than 9 square meters |
+|  19 | n_otherannex           | Number of other annexes reported in the property                                        |
+|  20 | n_pool                 | Number of pools reported in the property                                                |
+|  21 | n_room                 | Number of mains rooms reported in the property                                          |
+|  22 | n_rooms                | Number of rooms reported in the property                                                |
+|  23 | n_show                 | Number of showers reported in the property                                              |
+|  24 | n_sink                 | Number of sinks reported in the property                                                |
+|  25 | n_slr                  | Number of sleeping rooms reported in the property                                       |
+|  26 | n_terrace              | Number of terraces reported in the property                                             |
+|  27 | n_washr                | Number of washing rooms reported in the property                                        |
+|  28 | n_wc                   | Number of toilets reported in the property                                              |
+|  29 | nth_floor              | Reported floor of the property                                                          |
+|  30 | nth_floor_rel          | Relative floor of the property (from 0, ground floor, to 1, last floor)                 |
+|  31 | price                  | Price of the transaction                                                                |
+|  32 | price_sqm              | Price per square meter of the transaction                                               |
+|  33 | prop_loc_              | Official city's code where the property is located                                      |
+|  34 | prop_loc_dep           | Department code where the property is located                                           |
+|  35 | prop_loc_x             | Longitude where the property is located                                                 |
+|  36 | prop_loc_y             | Latitude where the property is located                                                  |
+|  37 | prop_type              | Type of property : 1 represents a flat and 2 a house                                    |
+|  38 | prop_year              | Year of contruction of the property                                                     |
+|  39 | s_field                |                                                                                         |
+|  40 | s_field                |                                                                                         |
+|  41 | s_nat                  |                                                                                         |
+|  42 | stair                  |                                                                                         |
+|  43 | trans_date             | Date of the official certified transaction                                              |
+|  44 | trans_id               | Unique identifier code of the transaction                                               |
+|  45 | trans_month            | Month of the official certified transaction                                             |
+|  46 | trans_type_code        | Type of transaction                                                                     |
+|  47 | trans_type_label       | Type of transaction                                                                     |
+|  48 | trans_year             | Year of the official certified transaction                                              |
+|  49 | water                  |                                                                                         |
