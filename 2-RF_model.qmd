@@ -41,7 +41,9 @@ For more information, you can read the paragraph on RF hyperparameters [here](ht
 
 It's a first step, we'll go back and chain it with the preprocessing pipeline afterwards. 
 
-Train the model (it should take about 5 minutes to train). 
+Train the model with the non transformed target (it should take about 5 minutes to train). 
+
+    > **Note: All parameters of RandomForestRegressor have a default value - you only need to explicitly pass the ones you wish to override.**
 
         <details>
 
@@ -51,7 +53,6 @@ Train the model (it should take about 5 minutes to train).
 
         </details>
 
-    > **Note: All parameters of RandomForestRegressor have a default value - you only need to explicitly pass the ones you wish to override.**
 
 ```{python}
 #| code-fold: true
@@ -68,14 +69,31 @@ rf = RandomForestRegressor(
     oob_score=True # for calculating total oob error for the RF
 )
 
+rf_pipeline = Pipeline([
+    ('preprocessing', preprocessor),
+    ('random_forests', rf)
+])
 
 # Train the model with train set
-rf.fit(X_train, y_train)
+rf_pipeline.fit(X_train, y_train)
 ```
 
 2.  Print the `Out-of-Bag` error *(the concept of OOB error will be covered in the next exercise)*.
 
+::: {.callout-tip}
+Scikit-learn allows you to access every step defined in the rf_pipeline (preprocessing or random_forests). Indeed, once fitted, all the output values are stored in the dictionnary `rf_pipeline`. 
 
+```python
+rf_pipeline["preprocessing"]   # access to the first step
+rf_pipeline["random_forests"]   # access to the second step
+```
+
+:::
+
+::: {.callout-important}
+Scikit-learn  distinguishes **parameters** from **fitted attributes**. Here, to access the attributes sent back by the training phase listed in the documentation, we need to search for the  `oob_score_ ` attributes of the pipeline.
+
+:::
 
 
 ```{python}
@@ -84,7 +102,7 @@ rf.fit(X_train, y_train)
 #| code-overflow: scroll
 #| eval: false
 
-rf.oob_score_
+rf_pipeline["random_forests"].oob_score_
 ```
 
 
@@ -110,7 +128,7 @@ rf.oob_score_
 from sklearn.metrics import mean_squared_error
 
 # Predictions on train set
-y_pred = rf.predict(X_test)
+y_pred = rf_pipeline.predict(X_test)
 
 # Print the error
 print(mean_squared_error(y_test, y_pred))
@@ -121,9 +139,9 @@ Congrats 🥳! You have trained your first RF model. Now, try to find the best h
 :::
 
 ::: {.callout-tip collapse="false" icon="false"}
-## <i class="bi bi-book"></i> Exercice 5: Tuning RF hyperparameters
+## <i class="bi bi-book"></i> Exercice 5: Tuning a random forest's hyperparameters
 
-Now that you understand what a RF is, try to tune its hyperparameters for training. In this exercise, your aim is to train the best model for the prediction of price per square meter.
+Now that you understand what a random forest is, we will tune its hyperparameters for training. In this exercise, your aim is to train the best model for the prediction of price per square meter.
 
 ## Tuning the number of trees
 
@@ -139,7 +157,7 @@ We will implement a function to plot the OOB error as a function of the number o
 
 -   plot the OOB error for each RF model to visualize the convergence.
 
-1.  Subsample a fraction ( `0.1` ) of the `df` dataset to reduce computation time and define X_train, X_test, y_train and y_test.
+1.  Subsample a fraction ( `0.1` ) of the `df` dataset to reduce computation time and define X_sub, X_test, y_sub and y_test.
 
 ```{python}
 #| code-fold: true
@@ -153,7 +171,7 @@ df_sampled = df.sample(frac=0.1, axis=0, random_state= RANDOM_STATE)
 X = df.drop(columns="valfonc_m2")  # X must contain only the features we'll learn from
 y = df["valfonc_m2"]  # target must be a dataframe with 1 column
 
-X_train, X_test, y_train, y_test = train_test_split(
+X_sub, X_sub_test, y_sub, y_sub_test = train_test_split(
     X, y, test_size=0.25, random_state=RANDOM_STATE
 )
 
