@@ -53,6 +53,7 @@ The aim of this part is to manipulate new database and understand features in or
     #| code-overflow: scroll
 
     import duckdb
+    import os
 
     # Create a non-persistent connection (the database exists only while the connection is alive and disappears when it is closed)
     con = duckdb.connect(database=":memory:")
