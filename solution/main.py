@@ -13,6 +13,9 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 import numpy as np
 import polars as pl
+
+RANDOM_STATE = 202605
+
 trans = pl.concat(
     [
         pl.read_parquet('s3://confpns/synthetic-transactions/rawdata/transactions/transactions_houses_final.parquet'),
@@ -104,7 +107,6 @@ preprocessor = ColumnTransformer(
 #          and performance evaluation
 # ============================================
 
-RANDOM_STATE = 202605
 
 def log_transform(y):
     return np.log10(y)
