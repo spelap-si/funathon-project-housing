@@ -1,21 +1,18 @@
 ---
 lang: en-US
-title: Training a Random Forest model
+title: Training a Gradient Boosting model
 
 format:
   html:
     number-sections: true
 ---
 
-In the first part of this project, we prepared the data to train the model. We reflected on which target variable to use, how to transform features and how to use scikit-learn tools for pipeline construction. Now, we are going to train a Random Forest model, covering both the theoretical background and its implementation.
+We saw how to train a **Random Forests** in the [previous section](2-RF_model.qmd). Another useful ensemble method is the gradient boosting mechanism. 
 
-**Random Forests** (RF) is a powerful and widely used ensemble method for classification and regression tasks. It combines the simplicity of decision trees and the sampling of observations and variables with the power of aggregation to improve predictive performance and reduce the risk of overfitting.
 
-An Insee working document on ensemble methods is available [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/3-random_forest.html). If you are unfamiliar with ensemble methods, we recommend reading this document before processing.
+## Concepts of Gradient Boosting
 
-## Concepts of Random Forests
-
-**RF** extend [bagging](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/2-bagging.html) by introducing an additional level of randomness: at each node, the splitting rule is determined using only a **randomly selected subset of features**. This further **reduces correlation between trees**, thereby **lowering the variance of the aggregated model's predictions**.
+**Gradient boosting** 
 
 So, RF rely on four key elements : building **aggregated regression or classification trees**, with a **randomized subset of features** and a ***bootstrap*** **sample** - a random sample drawn with or without replacement from the original dataset, typically of the same size.
 
@@ -26,12 +23,12 @@ So, RF rely on four key elements : building **aggregated regression or classific
 -   **Data sample rate** : useful to speed up training on large dataset, otherwise keep it close to `1.0`;
 -   **Minimum number of observation per leaf** (terminal node) : setting a higher value can reduce training time, generally without any performance loss.
 
-For more information, you can read the paragraph on RF hyperparameters [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/2-guide_usage_RF.html#sec-hyperparam-rf)
+For more information, you can read the paragraph on RF hyperparameters [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/4-boosting.html)
 
 :::: {.callout-tip collapse="false" icon="false"}
-## <i class="bi bi-book"></i> Exercice 4: Train your first Random Forest model
+## <i class="bi bi-book"></i> Exercice 4: Train your first Gradient Boosting Forest model
 
-1.  Using the `RandomForestRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html), define a basic model with the following hyperparameters :
+1.  Using the `RandomForestRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html#sklearn.ensemble.HistGradientBoostingRegressor), define a basic model with the following hyperparameters :
 
     -   n_estimators=50
 
@@ -60,15 +57,10 @@ For more information, you can read the paragraph on RF hyperparameters [here](ht
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 
-# create RandomForestRegressor instance with selected hyperparameters
-rf = RandomForestRegressor(
-    n_estimators=50,
-    max_features="sqrt",
-    min_samples_leaf=10,
-    oob_score=True # for calculating total oob error for the RF
-)
+# create RandomForestRegressor instance with default hyperparameters
+gb = HistGradientBoostingRegressor()
 
 # Defining train and test sets
 X = df.drop(columns=["valfonc_m2", "datemut", "dteloc"])  
@@ -80,7 +72,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # Train the model
-rf.fit(X_train, y_train)
+gb.fit(X_train, y_train)
 ```
 
 2.  Print the `Out-of-Bag` error *(the concept of OOB error will be covered in the next exercise)*.
