@@ -7,39 +7,44 @@ format:
     number-sections: true
 ---
 
-We saw how to train a **Random Forests** in the [previous section](2-RF_model.qmd). Another useful ensemble method is the gradient boosting mechanism. 
+Now that we have trained and evaluated a Random Forest model, we will train a **Gradient Boosting** model on the same data. We will cover the theoretical background, train a baseline model, understand the key hyperparameters, and tune them following a simple validation procedure.
 
+An Insee working document on ensemble methods is available [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/4-boosting.html). If you are unfamiliar with gradient boosting, we recommend reading it before proceeding.
 
 ## Concepts of Gradient Boosting
 
-<!-- **Gradient boosting** 
+Like Random Forests, **Gradient Boosting** is an ensemble method that combines many decision trees. However, the two methods differ fundamentally in how those trees are built and combined.
 
-So, RF rely on four key elements : building **aggregated regression or classification trees**, with a **randomized subset of features** and a ***bootstrap*** **sample** - a random sample drawn with or without replacement from the original dataset, typically of the same size.
+**Random Forests** build trees **independently and in parallel**, then average their predictions. Their strength comes from reducing variance through aggregation of decorrelated trees. By construction, they are quite robust to overfitting.
 
-**You need to select several hyperparameters for training** (we cover the most important ones here) :
+**Gradient Boosting** builds trees **sequentially**: each new tree is trained to correct the prediction errors — the *pseudo-residuals* — left by all previous trees. Formally, at each iteration $t$ the model is updated as:
 
--   **Number of trees** : this hyperparameter must be tuned - too few trees lead to higher prediction error, while too many trees increase computational time;
--   **Number of randomly sampled candidate features** : use `sqrt` or `log2` to ensure the RF algorithm works well;
--   **Data sample rate** : useful to speed up training on large dataset, otherwise keep it close to `1.0`;
--   **Minimum number of observation per leaf** (terminal node) : setting a higher value can reduce training time, generally without any performance loss.
+$$F_t(x) = F_{t-1}(x) + \eta \cdot f_t(x)$$
 
-For more information, you can read the paragraph on RF hyperparameters [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/4-boosting.html) -->
+where $f_t$ is the new tree and $\eta \in (0, 1]$ is the **learning rate**, which scales down the contribution of each tree to avoid overreacting to individual observations.
 
-:::: {.callout-tip collapse="false" icon="false"}
-## <i class="bi bi-book"></i> Exercice 4: Train your first Gradient Boosting model
+This sequential construction gives gradient boosting a stronger capacity to reduce **bias** — it can fit complex relationships that a random forest might miss. In a regression problem with squared-error loss, the pseudo-residual for observation $i$ is simply $y_i - \hat{y}_i^{(t-1)}$: each tree literally predicts what the current model got wrong.
 
-1.  Using the `HistGradientBoostingRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html#sklearn.ensemble.HistGradientBoostingRegressor), define a basic model with default hyperparameters :
+::: callout-warning
+### Gradient boosting and overfitting
 
-    Train the model with the full pipeline (it should take about less than a minute to train).
+Unlike random forests, gradient boosting contains **no built-in mechanism to limit overfitting**. It is designed to approximate the training data as precisely as possible — including its noise. As the number of trees grows, the model increasingly captures random fluctuations in the training set rather than the true signal.
 
+**Controlling overfitting is therefore the central challenge when training a gradient boosting model**, and it is the main purpose of its regularisation hyperparameters (see [Section 3](#key-hyperparameters-of-gradient-boosting)).
+:::
 
-    <details>
+**scikit-learn's `HistGradientBoostingRegressor`** is a histogram-based implementation, similar in spirit to LightGBM. It discretises continuous features into bins before constructing trees, making it significantly faster than the classic `GradientBoostingRegressor`, especially on large datasets. It also natively handles missing values without any imputation step.
 
-    <summary>Click to view a hint</summary>
+For more information, you can read the detailed presentation of the gradient boosting algorithm [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter2/4-boosting.html) and the usage guide [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/3-guide_usage_GB.html).
 
-    Remember : in the [Preprocessing section](1-preprocessing.qmd), we created the training sets `X_train` and `y_train`.
+## Training a baseline Gradient Boosting model
 
-    </details>
+::: {.callout-tip collapse="false" icon="false"}
+## <i class="bi bi-book"></i> Exercice 7: Train your first Gradient Boosting model
+
+1.  Using the `HistGradientBoostingRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html), define and train a baseline model with **default hyperparameters** using the same training set `X_train` and `y_train` defined in the preprocessing section.
+
+    > **Note: Just like for `RandomForestRegressor`, all parameters have default values — you do not need to pass any argument to get a working model.**
 
 ```{python}
 #| code-fold: true
@@ -47,426 +52,20 @@ For more information, you can read the paragraph on RF hyperparameters [here](ht
 #| code-overflow: scroll
 #| eval: false
 from sklearn.ensemble import HistGradientBoostingRegressor
-
-# create HistGradientBoostingRegressor instance with default hyperparameters
-gb = HistGradientBoostingRegressor()
-
-# Defining train and test sets
-X = df.drop(columns="valfonc_m2")  
-y = df["valfonc_m2"]  
+X = df.drop(columns=["valfonc_m2", "datemut", "dteloc"])  
+y = np.log10(df["valfonc_m2"]) 
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
     test_size=0.2,
     random_state=RANDOM_STATE
 )
-
-gb_pipeline = Pipeline([
-    ('preprocessing', preprocessor),
-    ('GB', gb)
-])
-
-model_gb = TransformedTargetRegressor(
-    regressor=gb_pipeline,
-    transformer=y_transformer
-)
-
-# Train the model
-model_gb.fit(X_train, y_train)
-
+gb = HistGradientBoostingRegressor(random_state=RANDOM_STATE)
+gb.fit(X_train, y_train)
 ```
 
-2.  Calculate the accuracy of this first model on the test set. What does scikit learn consider as the default score for this type of model ? 
+2.  Compute the three evaluation metrics — **RMSE**, **MAE** and **R²** — on both the **training set** and the **test set**. Compare both sets of scores: what do you observe?
 
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-print(f'Default score : {model_gb.score(X_test, y_test):.3f}')  # default is R²
-```
-
-3.  In scikit learn's documentation on the [score variable](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html#sklearn.ensemble.HistGradientBoostingRegressor.score), check other types of score scikit learn can perform. Print 3 other metrics. Check that the default score calculated before is the R².
-
-    <details>
-
-    <summary>Click to view a hint</summary>
-    The list of metrics should get you [here](https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-string-names) where all the metrics are listed. 
-
-    </details>
-
-```{python}
-from sklearn.metrics import mean_absolute_percentage_error, mean_absolute_error, mean_squared_error, r2_score
-
-# To calculate other scores 
-y_pred = model_gb.predict(X_test)
-
-# Evaluation
-print(f'MAE : {mean_absolute_error(y_test, y_pred):.3f}')
-print(f'MAPE : {mean_absolute_percentage_error(y_test, y_pred):.3f}')
-print(f'MSE : {mean_squared_error(y_test, y_pred):.3f}')
-print(f'RMSE : {r2_score(y_test, y_pred):.3f}')
-
-```
-
-
-
-Congrats 🥳! You have trained your first gradient boosting model. Now, we will try to find the best hyperparameters to minimize the final predicted error of the model.
-
-::::
-
-:::::: {.callout-tip collapse="false" icon="false"}
-## <i class="bi bi-book"></i> Exercice 5: Tuning gradient boosting's hyperparameters
-
-Default values are usually a good start but we need to tune its hyperparameters to find out if a better model doesn't exist. In this exercise, your aim is to train the best model for the prediction of price per square meter.
-
-## Tuning the number of trees
-
-One easy way to determine the optimal number of trees is to use the *Out-of-Bag* (OOB) error - an error estimate computed on the observations that were not sampled during bootstrap and therefore not used to train each individual tree. By tracking how this error evolves as trees are added, one can plot its convergence as a function of the number of trees.
-
-With the scikit-learn's default implementation, producing this plot is not straightforward : the training process is optimised for speed, and trees are grown in parallel, meaning intermediate OOB estimates are not natively exposed. We therefore need to write a custom function to compute and plot this convergence curve. You can see the documentation page on OOB error [here](https://scikit-learn.org/stable/auto_examples/ensemble/plot_ensemble_oob.html)
-
-We will implement a function to plot the OOB error as a function of the number of trees in a RF model. To do so, you will need to:
-
--   subsample a fraction of the dataset to reduce computation time (the dataset is large with more than 1 million of rows);
-
--   train multiple RF models with varying numbers of trees;
-
--   plot the OOB error for each RF model to visualize the convergence.
-
-1.  Subsample a fraction ( `0.1` ) of the `df` dataset to reduce computation time and define X_sub and y_sub. To stick to the characteristics of the target, stratify the sampling to the target's distribution thanks to [pandas' `qcut` function](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.qcut.html#pandas.qcut).
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-# Sample the train dataset using Pandas' index
-y_train_df = pd.DataFrame(y_train)
-y_train_df["quantile"] = pd.qcut(y_train_df["valfonc_m2"], q=100, labels=False) ## allows to discretly cut along quantiles
-y_sub = y_train_df.groupby("quantile").sample(frac=0.1, random_state= RANDOM_STATE)  # sampling by quantile 
-
-y_sub = y_sub["valfonc_m2"] # converting to pandas.series
-X_sub = X_train.filter(items=y_sub.index, axis=0 )  # sampling X_train
-
-```
-
-2.  Train multiple RF models with varying numbers of trees, using `warm_start=True` to avoid retraining all trees from scratch at each iteration. Keep the OOB error calculated in a list.
-
-    ::: {.callout-tip collapse="true" title="Click to view a hint"}
-    As a hint, you can go to the documentation page on OOB error [here](https://scikit-learn.org/stable/auto_examples/ensemble/plot_ensemble_oob.html).
-
-    If you need, here is the code to calculate and store the OOB score.
-
-    ```{python}
-    oob_scores = []
-    warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
-    # filterwarnings remove some warnings messages
-    for n in range(min_estimators, max_estimators, 10):
-        rf.set_params(n_estimators=n)
-        rf.fit(X_sub, y_sub)
-        if metric == "r2":
-            oob_scores.append((n, 1 - rf.oob_score_))
-        elif metric == "neg_root_mean_squared_error":
-            mse = np.mean((y_sub - rf.oob_prediction_) ** 2)
-            oob_scores.append((n, np.sqrt(mse)))
-        else:
-            mae = np.mean(np.abs(y_sub - rf.oob_prediction_))
-            oob_scores.append((n, mae))
-    warnings.resetwarnings()
-    ```
-    :::
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-import warnings 
-import numpy as np
-
-metric = "r2"
-min_estimators=5
-max_estimators=150
-
-rf = RandomForestRegressor(
-    warm_start=True,
-    **rf_params,
-)
-
-oob_scores = []
-warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
-# filterwarnings remove some warnings messages
-for n in range(min_estimators, max_estimators, 20):
-    rf.set_params(n_estimators=n)
-    rf.fit(X_sub, y_sub)
-    if metric == "r2":
-        oob_scores.append((n, 1 - rf.oob_score_))
-    elif metric == "neg_root_mean_squared_error":
-        mse = np.mean((y_sub - rf.oob_prediction_) ** 2)
-        oob_scores.append((n, np.sqrt(mse)))
-    else:
-        mae = np.mean(np.abs(y_sub - rf.oob_prediction_))
-        oob_scores.append((n, mae))
-warnings.resetwarnings()
-```
-
-3.  (*Optional*) Using the *Out-of-Bag (OOB) error*, try to plot the convergence of the OOB error as a function of the number of trees.
-
-    <details>
-
-    <summary>Click to view a hint</summary>
-
-    You need to :
-
-    -   subsample the inputs `X` and `y`, with a parameter `subsample` ;
-    -   train the RF model from 15 to 150 trees (with a gap at 5) with `RandomForestRegressor` with the parameter `warm_start=True`;
-    -   select which metric you use to calculate OOB error estimator
-    -   plot the convergence of OOB error as a function of number of trees
-
-    </details>
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-import matplotlib.pyplot as plt
-
-rf_params = {
-    "max_depth": 8,
-    "max_features": "sqrt",
-    "min_samples_split": 5,
-    "min_samples_leaf": 10,
-    "random_state": RANDOM_STATE,
-}
-
-def rf_error_oob_plot(X_train,
-                      y_train,
-                      subsample=0.1,
-                      min_estimators=15,
-                      max_estimators=150,
-                      metric='r2',
-                      **rf_params):
-    """
-    Plot error OOB convergence by the number of trees
-
-    Args:
-        X_train: features
-        y_train: target
-        subsample: rate of sample for X_train
-        min_estimators: number min of trees
-        max_estimators: number max of trees
-        metric : 'r2',  'rmse' or 'mae'
-    """
-
-    # --- Stratified sampling of training set ---
-    y_train_df = pd.DataFrame(y_train)
-    y_train_df["quantile"] = pd.qcut(y_train_df["valfonc_m2"], q=100, labels=False) ## allows to discretly cut along quantiles
-    y_sub = y_train_df.groupby("quantile").sample(frac=0.1, random_state= RANDOM_STATE)  # sampling by quantile 
-
-    y_sub = y_sub["valfonc_m2"] # converting to pandas.series
-    X_sub = X_train.filter(items=y_sub.index, axis=0 )  # sampling X_train
-
-    # --- Training with warm start ---
-    rf = RandomForestRegressor(
-        oob_score=True,
-        warm_start=True,
-        **rf_params,
-    )
-
-    oob_scores = []
-    warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
-    for n in range(min_estimators, max_estimators, 5):
-        rf.set_params(n_estimators=n)
-        rf.fit(X_sub, y_sub)
-        if metric == "r2":
-            oob_scores.append((n, 1 - rf.oob_score_))
-        elif metric == "neg_root_mean_squared_error":
-            mse = np.mean((y_sub - rf.oob_prediction_) ** 2)
-            oob_scores.append((n, np.sqrt(mse)))
-        else:
-            mae = np.mean(np.abs(y_sub - rf.oob_prediction_))
-            oob_scores.append((n, mae))
-    warnings.resetwarnings()
-
-    # Generate the "OOB error rate" vs. "n_estimators" plot.
-    xs, ys = zip(*oob_scores)
-
-    fig, ax = plt.subplots()
-    ax.plot(xs, ys)
-    ax.set_xlim(min_estimators, max_estimators)
-    ax.set_xlabel("n_trees")
-    ax.set_ylabel(f"OOB error ({metric})")
-    plt.close(fig)
-
-    return fig
-
-```
-
-You can select the number of trees (`n_estimators`) now, with the OOB error plot. Which number do you choose ?
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-oob_error_ntrees = rf_error_oob_plot(X_train=X_train,
-                                     y_train=y_train,
-                                     subsample=0.1,
-                                     min_estimators=5,
-                                     max_estimators=150,
-                                     metric="r2")
-oob_error_ntrees
-```
-
-## Tuning all others hyperparameters with cross validation
-
-**Cross-validation** is a key step in model training : it is a technique used to evaluate the model's ability to generalize to unseendata, by splitting the dataset into multiple folds (typically 5) and iteratively using each fold as a validation set while the remaining folds are used for training. It also allows you to compare different set of hyperparameters and select the configuration that yields the best predictive performance.
-
-> Note : In the Preprocessing section, you saw how to build a Pipeline. In this exercise, we will use a Pipeline again. The first exercise didn't use it to let you practice scikit-learn tools documented [here](https://scikit-learn.org/stable/modules/compose.html#pipelines-and-composite-estimators).
-
-0.  For convenience, we dropped the features `dteloc`, `dtemut` and trained our model on absolute prices and not on the transformed ones. Get them back and define the new training and testing datasets `X_train, X_test, y_train, y_test`.
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-# Split features / target
-X = df.drop(columns="valfonc_m2")  
-y = df["valfonc_m2"]  
-
-# Split train / test set
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=RANDOM_STATE
-)
-```
-
-1.  Create a dictionary with the 3 hyperparameters to test (`n_estimators`, `max_features` and `min_samples_leaf`) for training.
-
-    <details>
-
-    <summary>Click to view a hint</summary>
-
-    Pay attention to hyperparameter names : when using `Pipeline` and `TransformedTargetRegressor` objects, theses names are more complex than plain `RandomForestRegressor` parameters names. In the previous section, we used two objects for training :
-
-    -   `TransformedTargetRegressor` to apply log transformation on the target - the corresponding parameter prefix is `regressor`
-    -   `Pipeline` to apply all preprocessing transformations and fit the model : you need to refer to the name of the random forest step (it was `'RF'`)\
-        For example, for the hyperparameter `n_estimators`, the key in the parameter dictionary must be `regressor__RF__n_estimators`
-
-    More details on [scikit learn's documentation](https://scikit-learn.org/stable/modules/compose.html#access-to-nested-parameters)
-
-    </details>
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-param_grid = {
-    "regressor__RF__n_estimators": [80],
-    "regressor__RF__max_features": ["sqrt", "log2"],
-    "regressor__RF__min_samples_leaf": [5, 10, 50]
-}
-```
-
-2.  Using the [Grid Search documentation](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html), write the code to set up and run cross-validated hyperparameter tuning for the RF model. Note that training the model should last around 10 minutes.
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-from sklearn.model_selection import GridSearchCV
-
-# Grid search
-grid_search = GridSearchCV(
-    estimator=model, # it is the TransformedTargetRegressor created in the preprocessing part
-    param_grid=param_grid,
-    cv=4,  # number of folds
-    scoring="r2", # 'r2' or 'neg_root_mean_squared_error' or 'neg_mean_absolute_error'
-    n_jobs=-1,
-    verbose=1
-)
-
-# Train
-grid_search.fit(X_train, y_train)
-```
-
-3.  From the fitted `grid_search` object, retrieve the best hyperparameters found for the model.
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-print(grid_search.best_params_)
-```
-
-::: callout-important
-Scikit-learn distinguishes **original parameters** from \*\*fitted attributes with a trailing \_\*\*. The `_` suffix is a consistent scikit-learn convention: any attribute that only exists after fitting ends with `_` (e.g., `coef_`, `n_features_in_`, `classes_`). It signals "this was learned from data."
-
-``` python
-grid_search.myfittedparam_  
-```
-:::
-
-4.  From the fitted `grid_search` object, retrieve the best model. As it has only been trained on a fraction of the training set, retrain it on the full training set.
-
-> Note : Which type is `best_estimator_` attribute ?
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-rf_best = grid_search.best_estimator_
-print(type(rf_best))
-
-rf_best.fit(X_train, y_train)
-```
-
-Congrats ! You have optimized your RF model. Now, you need to evaluate its accuracy — that is, how close the model's predictions are to the actual values..
-
-::: {.callout-tip collapse="false"}
-## <i class="bi bi-book"></i> Exercice 6: Model evaluation
-
-Now that your model has been optimized, it is time to rigorously evaluate its performance on the test set — data the model has never seen during training. This step is essential to assess how well your model generalizes to new observations.
-
-Several metrics are commonly used to evaluate regression models:
-
--   **RMSE** (Root Mean Squared Error): measures the average magnitude of prediction errors, penalizing large errors more heavily;
--   **MAE** (Mean Absolute Error): measures the average absolute difference between predictions and actual values, more robust to outliers;
--   **R²** (Coefficient of Determination): measures the proportion of variance in the target explained by the model (1 = perfect fit, 0 = no better than the mean).
-
-1.  Compute predictions on the test set using the best model retrieved from the previous exercise.
-
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
-
-y_pred = rf_best.predict(X_test)
-```
-
-2.  Calculate the three evaluation metrics on the test set.
-
-<details>
-
-<summary>Click to view a hint</summary>
-
-You can use `mean_squared_error`, `mean_absolute_error`, and `r2_score` from `sklearn.metrics`. To obtain **RMSE** from **MSE**, apply `np.sqrt()`.
-
-</details>
+    > Note: Computing metrics on the training set alongside the test set is important with gradient boosting because it reveals whether the model is overfitting.
 
 ```{python}
 #| code-fold: true
@@ -476,46 +75,473 @@ You can use `mean_squared_error`, `mean_absolute_error`, and `r2_score` from `sk
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-mae  = mean_absolute_error(y_test, y_pred)
-r2   = r2_score(y_test, y_pred)
-
-print(f"RMSE : {rmse:.2f}")
-print(f"MAE  : {mae:.2f}")
-print(f"R²   : {r2:.4f}")
+for split, X, y in [("Train", X_train, y_train), ("Test", X_test, y_test)]:
+    y_pred = gb.predict(X)
+    rmse = np.sqrt(mean_squared_error(y, y_pred))
+    mae  = mean_absolute_error(y, y_pred)
+    r2   = r2_score(y, y_pred)
+    print(f"{split} — RMSE: {rmse:.2f}  |  MAE: {mae:.2f}  |  R²: {r2:.4f}")
 ```
 
-3.  (Optional) Plot predicted values against actual values to visually assess model quality. A well-calibrated model should have points closely aligned along the diagonal.
+3.  How does the default Gradient Boosting model compare with the best Random Forest model from Exercise 6?
+:::
 
-<details>
+## Key Hyperparameters of Gradient Boosting
 
-<summary>Click to view a hint</summary>
+The gradient boosting algorithm has many hyperparameters, but the literature identifies a small set that most strongly influence model performance. We focus on these four groups:
 
-Use `matplotlib.pyplot` to create a scatter plot of `y_test` against `y_pred`. Add a reference diagonal line (representing perfect predictions) using `ax.plot([min, max], [min, max])`.
+**1. Learning rate (`learning_rate`)**
 
-</details>
+The learning rate $\eta \in (0, 1]$ scales the contribution of each tree to the ensemble. A lower value makes learning more gradual — each tree corrects errors more cautiously — which typically reduces overfitting but requires more trees to converge. A higher value speeds up training but can cause instability and overfitting. Typical values range from `0.01` to `0.3`. The learning rate and the number of trees are tightly linked and should be optimised together.
+
+**2. Number of trees (`max_iter`)**
+
+Unlike a random forest, the performance of a gradient boosting model on the **training set grows continuously** as more trees are added — it never plateaus. If the number of trees is too large, the model will overfit. If it is too small, it will underfit. The optimal number of trees therefore depends on the learning rate: a lower learning rate requires more trees to achieve equivalent performance.
+
+> In `HistGradientBoostingRegressor`, the number of trees is controlled by `max_iter` (default: 100).
+
+**3. Tree complexity (`max_leaf_nodes`, `max_depth`)**
+
+These parameters control the complexity of each individual tree (the *weak learner*). `max_leaf_nodes` sets the maximum number of terminal leaves; `max_depth` sets the maximum depth. Shallow trees (few leaves, low depth) reduce overfitting but limit the ability of each tree to capture interactions between variables. Deeper trees are more expressive but risk overfitting and slow down training. In gradient boosting, trees are typically kept shallow — the model's power comes from combining many of them, not from the complexity of each one.
+
+> In `HistGradientBoostingRegressor`, the leaf-wise growth strategy is used, making `max_leaf_nodes` the primary parameter (default: 31).
+
+**4. Regularisation (`l2_regularization`, `min_samples_leaf`)**
+
+- `l2_regularization`: applies an L2 penalty to the leaf weights, shrinking them towards zero. This reduces the influence of outliers and limits overfitting. Default value is `0` (no regularisation), but a positive value is often recommended in practice.
+- `min_samples_leaf`: the minimum number of observations that a terminal leaf must contain. Higher values prevent the model from creating very small, potentially spurious leaves and act as an implicit regulariser.
+
+For more information, you can read the detailed description of these hyperparameters [here](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/3-guide_usage_GB.html#sec-hyperparam-gb).
+
+## Tuning Gradient Boosting Hyperparameters
+
+We follow the **iterative simple validation procedure** described in the [usage guide](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/3-guide_usage_GB.html#approche-2-approche-it%C3%A9rative-par-validation-simple). Rather than using cross-validation (which would require training many models), we evaluate each hyperparameter configuration once on the test set. To avoid fixing the number of trees in advance, we rely on **early stopping**: we set `max_iter` to a large value and let the algorithm stop automatically when performance on a validation set ceases to improve.
+
+The procedure has three sequential steps:
+
+1. **Optimise the learning rate** — the number of trees is determined automatically by early stopping.
+2. **Optimise the tree structure** — using the best learning rate from step 1.
+3. **Optimise the regularisation parameters** — using the best values from steps 1 and 2.
+
+For each step, we record **both training and test scores** to monitor overfitting. A large gap between train and test performance signals that the model is overfitting.
+
+::: callout-note
+We use the same `X_train`, `X_test`, `y_train`, `y_test` splits defined in the preprocessing section. Note that strictly speaking, the test set should not be used to select hyperparameters — a proper hold-out validation set should be used instead. We use the test set here for simplicity and pedagogical clarity.
+:::
+
+:::: {.callout-tip collapse="false" icon="false"}
+## <i class="bi bi-book"></i> Exercice 8: Tuning Gradient Boosting hyperparameters
+
+### Step 1 — Optimise the learning rate
+
+1.  Write a helper function `gb_scores` that, given a fitted `HistGradientBoostingRegressor` and the four arrays `X_train`, `y_train`, `X_test`, `y_test`, returns a dictionary with RMSE, MAE and R² for both the training and test sets.
 
 ```{python}
 #| code-fold: true
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
+
+def gb_scores(model, X_train, y_train, X_test, y_test):
+    """
+    Compute RMSE, MAE and R² on train and test sets.
+
+    Returns:
+        dict with keys 'train' and 'test', each containing
+        a dict with keys 'RMSE', 'MAE', 'R2'.
+    """
+    results = {}
+    for label, X, y in [("train", X_train, y_train), ("test", X_test, y_test)]:
+        y_pred = model.predict(X)
+        results[label] = {
+            "RMSE": np.sqrt(mean_squared_error(y, y_pred)),
+            "MAE" : mean_absolute_error(y, y_pred),
+            "R2"  : r2_score(y, y_pred),
+        }
+    return results
+```
+
+2.  Train one `HistGradientBoostingRegressor` for each value in `learning_rates = [0.05, 0.1, 0.15, 0.2]`. For each model, enable **early stopping** by setting `early_stopping=True`, `validation_fraction=0.1` and `n_iter_no_change=20`, and set `max_iter=1000` so that the algorithm has room to converge. Record the train and test scores using the function defined above and store the results. Computation should last about 7 minutes. 
+
+    ::: {.callout-tip collapse="true" title="Click to view a hint"}
+    You can iterate over `learning_rates` and build a results list of the form:
+
+    ```python
+    all_results.append({
+        "learning_rate": lr,
+        "n_iter": model.n_iter_,  # actual number of trees used
+        "train_rmse": ...,
+        "test_rmse":  ...,
+        "train_r2":   ...,
+        "test_r2":    ...,
+    })
+    ```
+
+    `n_iter_` is the fitted attribute that stores the number of trees actually trained (after early stopping).
+    :::
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+
+def diff_lr(learning_rates: list):
+    lr_results = []
+    for lr in learning_rates:
+        model = HistGradientBoostingRegressor(
+            learning_rate=lr,
+            max_iter=500,
+            early_stopping=True,
+            validation_fraction=0.1,
+            n_iter_no_change=20,
+            random_state=RANDOM_STATE,
+        )
+        model.fit(X_train, y_train)
+
+        scores = gb_scores(model, X_train, y_train, X_test, y_test)
+        lr_results.append({
+            "learning_rate": lr,
+            "n_iter"       : model.n_iter_,
+            "train_rmse"   : scores["train"]["RMSE"],
+            "test_rmse"    : scores["test"]["RMSE"],
+            "train_r2"     : scores["train"]["R2"],
+            "test_r2"      : scores["test"]["R2"],
+        })
+        print(
+            f"lr={lr:.2f}  |  trees={model.n_iter_:4d}"
+            f"  |  train R²={scores['train']['R2']:.4f}"
+            f"  |  test R²={scores['test']['R2']:.4f}"
+        )
+    return lr_results
+
+lr_results = diff_lr([0.05, 0.1, 0.2, 0.3, 0.5])
+```
+
+3.  Plot the train and test **R²** scores for each learning rate. Which learning rate do you choose?
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+import matplotlib.pyplot as plt
+import pandas as pd
+
+def plot_lr(lr_results):
+    df_lr = pd.DataFrame(lr_results)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=False)
+
+    # R² plot
+    ax = axes[0]
+    ax.plot(df_lr["learning_rate"], df_lr["train_r2"], marker="o", label="Train R²")
+    ax.plot(df_lr["learning_rate"], df_lr["test_r2"],  marker="s", label="Test R²",
+            linestyle="--")
+    ax.set_xlabel("Learning rate")
+    ax.set_ylabel("R²")
+    ax.set_title("R² by learning rate")
+    ax.legend()
+    ax.grid(True, linestyle=":")
+
+    # Number of trees plot (informative: shows trade-off with learning rate)
+    ax = axes[1]
+    ax.bar(df_lr["learning_rate"].astype(str), df_lr["n_iter"], color="steelblue",
+        width=0.5)
+    ax.set_xlabel("Learning rate")
+    ax.set_ylabel("Number of trees (n_iter_)")
+    ax.set_title("Trees used after early stopping")
+    ax.grid(True, linestyle=":", axis="y")
+
+    plt.tight_layout()
+    plt.show()
+
+plot_lr(lr_results)
+# Best learning rate
+best_lr_row = df_lr.loc[df_lr["test_r2"].idxmax()]
+BEST_LR = best_lr_row["learning_rate"]
+print(f"\nBest learning rate: {BEST_LR}  "
+      f"(test R²={best_lr_row['test_r2']:.4f}, "
+      f"trees={int(best_lr_row['n_iter'])})")
+```
+
+### Step 2 — Optimise the tree structure
+
+4.  Using the best learning rate selected in the previous step, train one model for each combination of `max_leaf_nodes` and `min_samples_leaf` values defined below. Keep early stopping enabled with the same settings. Record and display train/test scores.
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+from itertools import product
+
+max_leaf_nodes_values = [15, 31, 63]
+min_samples_leaf_values = [10, 20, 50]
+
+tree_results = []
+
+for n_leaves, min_leaf in product(max_leaf_nodes_values, min_samples_leaf_values):
+    model = HistGradientBoostingRegressor(
+        learning_rate=BEST_LR,
+        max_iter=1000,
+        max_leaf_nodes=n_leaves,
+        min_samples_leaf=min_leaf,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=20,
+        random_state=RANDOM_STATE,
+    )
+    model.fit(X_train, y_train)
+
+    scores = gb_scores(model, X_train, y_train, X_test, y_test)
+    tree_results.append({
+        "max_leaf_nodes"  : n_leaves,
+        "min_samples_leaf": min_leaf,
+        "n_iter"          : model.n_iter_,
+        "train_rmse"      : scores["train"]["RMSE"],
+        "test_rmse"       : scores["test"]["RMSE"],
+        "train_r2"        : scores["train"]["R2"],
+        "test_r2"         : scores["test"]["R2"],
+    })
+
+df_tree = pd.DataFrame(tree_results)
+print(df_tree.sort_values("test_r2", ascending=False).to_string(index=False))
+```
+
+5.  Plot the train and test **R²** scores for each hyperparameter combination, to identify which configurations lead to overfitting.
+
+    ::: {.callout-tip collapse="true" title="Click to view a hint"}
+    A clear way to visualise this is to use a **grouped bar chart** or to create one subplot per value of `max_leaf_nodes`, showing train/test R² on the x-axis for each value of `min_samples_leaf`.
+    :::
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+fig, axes = plt.subplots(
+    1, len(max_leaf_nodes_values),
+    figsize=(14, 4),
+    sharey=True,
+)
+
+for ax, n_leaves in zip(axes, max_leaf_nodes_values):
+    subset = df_tree[df_tree["max_leaf_nodes"] == n_leaves].copy()
+    x = np.arange(len(subset))
+    width = 0.35
+
+    ax.bar(x - width / 2, subset["train_r2"], width, label="Train R²",
+           color="steelblue")
+    ax.bar(x + width / 2, subset["test_r2"],  width, label="Test R²",
+           color="tomato")
+    ax.set_xticks(x)
+    ax.set_xticklabels(subset["min_samples_leaf"].astype(str))
+    ax.set_xlabel("min_samples_leaf")
+    ax.set_title(f"max_leaf_nodes = {n_leaves}")
+    ax.legend(fontsize=8)
+    ax.grid(True, linestyle=":", axis="y")
+
+axes[0].set_ylabel("R²")
+fig.suptitle("Train vs. Test R² — tree structure hyperparameters", fontsize=12)
+plt.tight_layout()
+plt.show()
+
+# Best combination
+best_tree_row = df_tree.loc[df_tree["test_r2"].idxmax()]
+BEST_LEAVES   = int(best_tree_row["max_leaf_nodes"])
+BEST_MIN_LEAF = int(best_tree_row["min_samples_leaf"])
+print(f"\nBest combination: max_leaf_nodes={BEST_LEAVES}, "
+      f"min_samples_leaf={BEST_MIN_LEAF}  "
+      f"(test R²={best_tree_row['test_r2']:.4f})")
+```
+
+### Step 3 — Optimise the regularisation parameters
+
+6.  Using the best learning rate and tree structure found in the previous steps, train one model for each value of `l2_regularization` in the list below. Record and plot train/test scores. Does regularisation help reduce overfitting?
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+l2_values = [0.0, 0.1, 0.5, 1.0, 5.0]
+reg_results = []
+
+for l2 in l2_values:
+    model = HistGradientBoostingRegressor(
+        learning_rate=BEST_LR,
+        max_iter=1000,
+        max_leaf_nodes=BEST_LEAVES,
+        min_samples_leaf=BEST_MIN_LEAF,
+        l2_regularization=l2,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=20,
+        random_state=RANDOM_STATE,
+    )
+    model.fit(X_train, y_train)
+
+    scores = gb_scores(model, X_train, y_train, X_test, y_test)
+    reg_results.append({
+        "l2_regularization": l2,
+        "n_iter"           : model.n_iter_,
+        "train_rmse"       : scores["train"]["RMSE"],
+        "test_rmse"        : scores["test"]["RMSE"],
+        "train_r2"         : scores["train"]["R2"],
+        "test_r2"          : scores["test"]["R2"],
+    })
+
+df_reg = pd.DataFrame(reg_results)
+
+# Plot
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.plot(df_reg["l2_regularization"], df_reg["train_r2"], marker="o",
+        label="Train R²")
+ax.plot(df_reg["l2_regularization"], df_reg["test_r2"],  marker="s",
+        label="Test R²", linestyle="--")
+ax.set_xlabel("l2_regularization")
+ax.set_ylabel("R²")
+ax.set_title("Train vs. Test R² — L2 regularisation")
+ax.legend()
+ax.grid(True, linestyle=":")
+plt.tight_layout()
+plt.show()
+
+# Best value
+best_reg_row = df_reg.loc[df_reg["test_r2"].idxmax()]
+BEST_L2 = best_reg_row["l2_regularization"]
+print(f"\nBest l2_regularization: {BEST_L2}  "
+      f"(test R²={best_reg_row['test_r2']:.4f})")
+```
+
+### Step 4 — Train the final model
+
+7.  Train the final `HistGradientBoostingRegressor` using all the best hyperparameters identified in the previous steps. Use the same pipeline structure (with `TransformedTargetRegressor`) as in the random forest section. Then re-train it on the full training set.
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+from sklearn.pipeline import Pipeline
+from sklearn.compose import TransformedTargetRegressor
+import numpy as np
+
+gb_final = HistGradientBoostingRegressor(
+    learning_rate=BEST_LR,
+    max_iter=1000,
+    max_leaf_nodes=BEST_LEAVES,
+    min_samples_leaf=BEST_MIN_LEAF,
+    l2_regularization=BEST_L2,
+    early_stopping=True,
+    validation_fraction=0.1,
+    n_iter_no_change=20,
+    random_state=RANDOM_STATE,
+)
+
+X = df.drop(columns=["valfonc_m2"])  
+y = df["valfonc_m2"] 
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=RANDOM_STATE
+)
+
+# Wrap in the same pipeline / TransformedTargetRegressor as the RF section
+gb_pipeline = Pipeline([
+    ("preprocessor", preprocessor),  # same preprocessor as defined in preprocessing section
+    ("GB", gb_final),
+])
+
+gb_model = TransformedTargetRegressor(
+    regressor=gb_pipeline,
+    func=np.log1p,
+    inverse_func=np.expm1,
+)
+
+gb_model.fit(X_train, y_train)
+print("Final model trained.")
+```
+
+::::
+
+::: {.callout-tip collapse="false"}
+## <i class="bi bi-book"></i> Exercice 9: Evaluate the final Gradient Boosting model
+
+Now that the model has been tuned, evaluate its performance on the test set and compare it to the Random Forest baseline.
+
+1.  Compute **RMSE**, **MAE** and **R²** on both the training and test sets for the final gradient boosting model.
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
+
+for split, X, y in [("Train", X_train, y_train), ("Test", X_test, y_test)]:
+    y_pred = gb_model.predict(X)
+    rmse = np.sqrt(mean_squared_error(y, y_pred))
+    mae  = mean_absolute_error(y, y_pred)
+    r2   = r2_score(y, y_pred)
+    print(f"{split} — RMSE: {rmse:.2f}  |  MAE: {mae:.2f}  |  R²: {r2:.4f}")
+```
+
+2.  Plot predicted values against actual values on the test set. How does the gradient boosting model compare visually with the random forest?
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+import matplotlib.pyplot as plt
+
+y_pred_test = gb_model.predict(X_test)
 
 fig, ax = plt.subplots(figsize=(7, 7))
 
-ax.scatter(y_test, y_pred, alpha=0.3, s=5, label="Predictions")
+ax.scatter(y_test, y_pred_test, alpha=0.3, s=5, label="Predictions")
 
-lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
+lims = [min(y_test.min(), y_pred_test.min()),
+        max(y_test.max(), y_pred_test.max())]
 ax.plot(lims, lims, "r--", linewidth=1.5, label="Perfect prediction")
 
 ax.set_xlabel("Actual values")
 ax.set_ylabel("Predicted values")
-ax.set_title("Predicted vs. Actual values on the test set")
+ax.set_title("Predicted vs. Actual values on the test set\n(Gradient Boosting)")
 ax.legend()
 plt.tight_layout()
 plt.show()
 ```
 
-Congrats 🎉! You have successfully trained, optimized, and evaluated a Random Forest model for price per square meter prediction.
+3.  Fill in the summary table below comparing the Random Forest and Gradient Boosting models on the test set. Which model would you choose, and why?
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+import pandas as pd
+
+# Evaluate both models
+results = {}
+for name, model in [("Random Forest", rf_best), ("Gradient Boosting", gb_model)]:
+    y_pred = model.predict(X_test)
+    results[name] = {
+        "RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
+        "MAE" : mean_absolute_error(y_test, y_pred),
+        "R²"  : r2_score(y_test, y_pred),
+    }
+
+summary = pd.DataFrame(results).T
+print(summary.round(4).to_string())
+```
+
+Congrats 🎉! You have successfully trained, tuned, and evaluated a Gradient Boosting model and compared it to the Random Forest baseline.
 :::
-::::::
