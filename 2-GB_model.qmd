@@ -124,12 +124,10 @@ For more information, you can read the detailed description of these hyperparame
 
 ## Tuning Gradient Boosting Hyperparameters
 
-We follow the **iterative simple validation procedure** described in the [usage guide](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/3-guide_usage_GB.html#approche-2-approche-it%C3%A9rative-par-validation-simple). Rather than using cross-validation (which would require training many models), we evaluate each hyperparameter configuration once on the test set. To avoid fixing the number of trees in advance, we rely on **early stopping**: we set `max_iter` to a large value and let the algorithm stop automatically when performance on a validation set ceases to improve.
+We follow the **iterative simple validation procedure** described in the [usage guide](https://inseefrlab.github.io/DT_methodes_ensemblistes/chapters/chapter3/3-guide_usage_GB.html#approche-2-approche-it%C3%A9rative-par-validation-simple). Rather than using cross-validation (which would require training many models), we evaluate each hyperparameter configuration once on the test set and proceed in three sequential steps:
 
-The procedure has three sequential steps:
-
-1. **Optimise the learning rate** — the number of trees is determined automatically by early stopping.
-2. **Optimise the tree structure** — using the best learning rate from step 1.
+1. **Jointly optimise the number of trees and the learning rate** — these two hyperparameters are tightly linked and must be tuned together.
+2. **Jointly optimise the tree structure** — using the best values from step 1.
 3. **Optimise the regularisation parameters** — using the best values from steps 1 and 2.
 
 For each step, we record **both training and test scores** to monitor overfitting. A large gap between train and test performance signals that the model is overfitting.
