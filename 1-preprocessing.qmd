@@ -20,14 +20,10 @@ To have a better understanding of what we will do, here is an overview of the pr
 ::: {.callout-note appearance="simple"}
 ## Watch out
 
-All data inputs are available on the following S3 bucket : `s3://confpns/synthetic-transactions`
+All data inputs are available on the following S3 bucket : `s3://projet-funathon/2026/project1/data/`
 
-You have to load two different files :
+You have to load the file `2026/project1/data/1_input/transactions_EN.parquet` for transactions.
 
--   `rawdata/transactions/transactions_houses_final.parquet` for houses transactions
--   `rawdata/transactions/ transactions_flats_final.parquet` for flats transactions
-
-TO BE CHECKED - à refaire avec les données synthétiques finales - une seule base
 :::
 
 ## Exercice 1: Understanding data inputs
@@ -56,19 +52,20 @@ The aim of this part is to manipulate new database and understand features in or
     # You need to create a secret table with all the S3 credentials
     con.execute(
         f"""
-    CREATE SECRET secret_s3 (
+        CREATE SECRET secret_s3 (
         TYPE S3,
         KEY_ID '{os.environ["AWS_ACCESS_KEY_ID"]}',
         SECRET '{os.environ["AWS_SECRET_ACCESS_KEY"]}',
         ENDPOINT '{os.environ["AWS_S3_ENDPOINT"]}',
         SESSION_TOKEN '{os.environ["AWS_SESSION_TOKEN"]}',
-        REGION 'us-east-1',
+        REGION 'eu-west-1',
         URL_STYLE 'path',
-        SCOPE 's3://confpns/synthetic-transactions/'
-    );
-    """
+        SCOPE 's3://projet-funathon/'
+        );
+        """
     )
-    RANDOM_STATE=202605
+
+    RANDOM_STATE = 202605
     ```
 
 2.  **Load, with DuckDB, all data inputs in a DataFrame `trans`** (for transactions).
@@ -80,60 +77,10 @@ The aim of this part is to manipulate new database and understand features in or
 
 # We load all transactions made in France between 2010 and 2022
 trans = con.sql(
-    f"""
-        SELECT * FROM read_parquet('s3://confpns/synthetic-transactions/rawdata/transactions/transactions_houses_final.parquet')
-        UNION ALL
-        SELECT * FROM read_parquet('s3://confpns/synthetic-transactions/rawdata/transactions/transactions_flats_final.parquet')
+    """
+        SELECT * FROM read_parquet('s3://projet-funathon/2026/project1/data/1_input/transactions_EN.parquet')
     """).to_df()
 
-trans = trans.rename({
-  "idmutation":"trans_id",
-  "datemut":"trans_date",
-  "anneemut":"trans_year",
-  "moismut":"trans_month",
-  "idnatmut":"trans_type_code",
-  "libnatmut":"trans_type_label",
-  "valeurfonc":"price",
-  "dteloc":"prop_type",
-  "jannath":"prop_year_harm",
-  "ccodep":"prop_loc_dep",
-  "depcom":"prop_loc_",
-  "x":"prop_loc_x",
-  "y":"prop_loc_y",
-  "distance_ltm":"dist_tosea",
-  "distance_ltm_corr":"dist_tosea_corr",
-  "dnbniv":"n_floors",
-  "dnbbai":"n_bath",
-  "dnbdou":"n_show",
-  "dnblav":"n_sink",
-  "dnbwc":"n_wc",
-  "dnbppr":"n_mrooms",
-  "dnbsam":"n_eatr",
-  "dnbcha":"n_slr",
-  "dnbcu8":"n_kit8",
-  "dnbcu9":"n_kit9",
-  "dnbsea":"n_washr",
-  "dnbann":"n_ancrooms",
-  "dnbpdc":"n_rooms",
-  "dsupdc":"farea",
-  "geaulc":"has_water",
-  "gelelc":"has_elec",
-  "gesclc":"stair",
-  "ggazlc":"has_gas",
-  "gasclc":"has_elevator",
-  "gchclc":"has_cheating",
-  "gvorlc":"has_rchute",
-  "gteglc":"has_mdrainage",
-  "dniv":"nth_floor",
-  "dcntsol":"s_land_artif",
-  "dcntagri":"s_land_agri",
-  "dcntnat":"s_land_nat",
-  "nb_garages":"n_garage",
-  "nb_piscines":"n_pool",
-  "nb_terrasses":"n_terrace",
-  "nb_greniers":"n_attic",
-  "nb_caves":"n_basmt",
-  "nb_autresdep":"n_otherannex"})
 
 ```
 
@@ -146,12 +93,7 @@ DuckDB is not the only tool you can use to read from the data. You can also use 
 import pandas as pd
 
 # We load all transactions made in France between 2010 and 2022
-trans = pd.concat(
-    [
-        pd.read_parquet('s3://confpns/synthetic-transactions/rawdata/transactions/transactions_houses_final.parquet'),
-        pd.read_parquet('s3://confpns/synthetic-transactions/rawdata/transactions/transactions_flats_final.parquet')
-    ]
-    )
+trans = pd.read_parquet('s3://projet-funathon/2026/project1/data/1_input/transactions_EN.parquet')
 ```
 :::
 
@@ -244,7 +186,6 @@ We will transform a few features for the training part. It will enhance the qual
     import numpy as np
     import matplotlib.pyplot as plt
 
-    # --- Update with your target ---
     y = trans["price_sqm"]
     p = np.percentile(y, 99.5)
 
@@ -298,9 +239,10 @@ plt.tight_layout()
 plt.show()
 ```
 
-By looking at the graph, we see that the left tail gets bigger the closer we are to price going to 0.
-It may indicate an issue with data around these points.
-By looking at this phenomena closer, we can see that a threshold of €100, €200 or €300 would filter out these issues.
+The graph is quite clean because the data are synthetic and cleaner than the original data.
+But with original data, we would have seen that the left tail gets bigger the closer we are to 0.
+It may indicate an issue with data around these points and the need to apply a filter for values that are too low.
+We will set a price ceiling of 100€ to micmic original issue, even if with the synthethic data it's not warranted.
 
 The second step is to apply some statistic methods.
 For example, we can use the **Interquartile Range (IQR)** *to remove outlier target values*.
@@ -352,7 +294,7 @@ print(f"{n1} rows after deterministic and statistic filtering")
 
 ```{python}
 #| include: false
-print(f'Applying these filters methods has dropped about {(n0 - n1)/n0}:.2f % of the transactions.')
+print(f'Applying these filters methods has dropped about {((n0 - n1)/n0)*100:.2f} % of the transactions.')
 ```
 
 4.  **Handle missing values in the target variable**
@@ -419,7 +361,7 @@ You will see in the section {#sec-scikit-learn-pipeline} how preprocessing can b
 
     ::: {.callout-tip collapse="true" title="Hint"}
 
-    We chose to drop the following variables : `trans_id` (meaningless), `trans_type_code` (meaningless), `trans_type_label` (always equal to the same value), `price` (already taken care of with our target), `prop_loc_dep` (geographical information is comprised in geographical coordinates prop_loc_x and prop_loc_y), `prop_loc_citycode` (geographical information is comprised in geographical coordinates prop_loc_x and prop_loc_y), `dist_tosea` and `dist_tosea_corr` have no meaningful information in the Paris area, far from the sea.
+    We chose to drop the following variables : `price` (already taken care of with our target), `prop_loc_dep` (geographical information is comprised in geographical coordinates prop_loc_x and prop_loc_y), `prop_loc_citycode` (geographical information is comprised in geographical coordinates prop_loc_x and prop_loc_y), `dist_tosea` has no meaningful information in the Paris area, far from the sea.
 
     :::
 
@@ -429,8 +371,7 @@ You will see in the section {#sec-scikit-learn-pipeline} how preprocessing can b
 #| code-overflow: scroll
 
 df = trans.drop(columns=[
-    'trans_id', "trans_type_code", "trans_type_label", 
-    "price", "prop_loc_dep", "prop_loc_citycode", "dist_tosea", "dist_tosea_corr"
+    "price", "prop_loc_dep", "prop_loc_citycode", "dist_tosea"
 ])
 
 ```
@@ -460,7 +401,7 @@ df["prop_type"] = pd.Categorical(
 ```
 
 
-4.  The codification of categorical variable can be computational intensive. `prop_type` has only two modalities but check the number of modalities of `prop_year_harm`. To speed-up the computation, can we regroup modalities together ?  Does it make sense given how the variable has been transformed (see the [presentation of the data](index.qmd)) ? How can we do it ? 
+4.  The codification of categorical variable can be computational intensive. `prop_type` has only two modalities but check the number of modalities of `prop_year_harm`. To speed-up the computation, can we regroup modalities together ?  Does it make sense given how the variable has been transformed (see the [presentation of the data](index.qmd)) ? How can we do it ?
 
 ```{python}
 #| code-fold: true
@@ -468,11 +409,11 @@ df["prop_type"] = pd.Categorical(
 #| code-overflow: scroll
 
 counts = df.value_counts("prop_year_harm").reset_index()
-counts[counts["prop_year_harm"] < 1850].describe() # there more than 400 different years of construction, going from 13th century to now. Maybe we can bundle together years before 1850 and group them by decade
+counts[counts["prop_year_harm"] < 1850].describe() # there more than 500 different years of construction, going from 13th century to now. Maybe we can bundle together years before 1850 and group them by decade
 
-counts_10 = ((df["prop_year_harm"] // 10)*10).value_counts().reset_index()  # 76 modalities
-counts_10[counts_10["prop_year_harm"] < 1850].describe()  # years before 1850 represent 58 modalities with maximal class of about twenty thousands operations - ok
-counts_10[counts_10["prop_year_harm"] < 1850]["count"].sum()  
+counts_10 = ((df["prop_year_harm"] // 10)*10).value_counts().reset_index()  # 82 modalities
+counts_10[counts_10["prop_year_harm"] < 1850].describe()  # years before 1850 represent 64 modalities with maximal class of about two thousands operations - ok
+counts_10[counts_10["prop_year_harm"] < 1850]["count"].sum()
 
 # Replacing year of construction by decade and merging together all years before 1850
 df['prop_year_harm_10'] = (df['prop_year_harm'] // 10)*10
@@ -498,7 +439,7 @@ df = df.drop(columns=["prop_year_harm"])
 from sklearn.model_selection import train_test_split
 
 # Split features / target
-X = df.drop(columns="price_sqm")  # X must contain only the features we'll learn from
+X = df.drop(columns=["price_sqm"])  # X must contain only the features we'll learn from
 y = df["price_sqm"]  # target must be a dataframe with 1 column
 
 # Split train / test set
@@ -513,6 +454,23 @@ Now that you are familiar with the main mechanisms of pre-processing for model t
 
 Scikit-learn has a very well crafted documentation, so please do not hesitate to go and have a look on [their website](https://scikit-learn.org/stable/api/index.html).
 
+
+::: {.callout-note title="Fall-back option" collapse="true"}
+
+Preprocessed data have been stored in case you need a fall-back. 
+This data includes the final `X_train`, `X_test`, `y_train` and `y_test` datasets. 
+You can fetch it back by running the following code : 
+
+
+```python
+X_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_train.parquet')
+X_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_test.parquet')
+y_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_train.parquet')["price_sqm"]
+y_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_test.parquet')["price_sqm"]
+```
+
+
+:::
 
 # How do you prepare your data with scikit-learn?
 
@@ -579,13 +537,13 @@ preprocessor = ColumnTransformer([
     ("num", StandardScaler(), cols_num), # scaling can be useful for some model but not for our project
     ("cat", OneHotEncoder(), ["region", "job_type", "prop_year_harm_10"])
     ],
-    remainder="passthrough" # the remainder parameter tells what to do with features not transformed. By default, non transformed data is dropped. Specifying "passthrough" passes on the data unchanged to the model. 
+    remainder="passthrough" # the remainder parameter tells what to do with features not transformed. By default, non transformed data is dropped. Specifying "passthrough" passes on the data unchanged to the model.
 )
 
 pipeline = Pipeline([
     ("preprocessor", preprocessor),
     ("model", RandomForestRegressor())
-]) 
+])
 ```
 
 ### Now let's go : prepare the pipeline for the training
@@ -612,15 +570,15 @@ from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
 
 
 def date_to_days(X: pd.Series, ref_date:pd.Timestamp):
-    # converts a date to a difference to ref_date : 
+    # converts a date to a difference to ref_date :
     diff_dt = pd.to_datetime(X) - ref_date
     # Extract days part from datetime object
     diff_dt = diff_dt.dt.days
     # Transform it from a Pandas series to a Numpy nd array, used by scikit learn for input
     diff_dt = diff_dt.to_numpy().reshape(-1, 1)
 
-    return diff_dt 
-    
+    return diff_dt
+
 date_transformer = FunctionTransformer(
     date_to_days,
     kw_args={"ref_date": pd.Timestamp('2010-01-01 00:00')}
@@ -632,10 +590,10 @@ preprocessor = ColumnTransformer(
         ("dat", date_transformer, "trans_date") # feature time since 01-01-2010
     ],
     remainder="passthrough"  # to keep features not transformed
-) 
+)
 ```
 
-2.  Create the Pipeline for training a RandomForestRegressor model. Go to the [scikit-learn's documentation](https://scikit-learn.org/stable/modules/compose.html#pipelines-and-composite-estimators) on the matter to understand how it works. 
+2.  Create the Pipeline for training a RandomForestRegressor model. Go to the [scikit-learn's documentation](https://scikit-learn.org/stable/modules/compose.html#pipelines-and-composite-estimators) on the matter to understand how it works.
 
     ::: {.callout-tip collapse="true" title="Hint"}
 
@@ -664,10 +622,10 @@ def inverse_log_transform(y):
     return 10 ** y
 
 y_transformer = FunctionTransformer(
-    func = log_transform,
-    inverse_func = inverse_log_transform)
+    func=log_transform,
+    inverse_func=inverse_log_transform)
 
-# Other option with Numpy : 
+# Other option with Numpy :
 # y_transformer = FunctionTransformer(
 #     func=np.log,
 #     inverse_func=np.exp)
@@ -699,7 +657,7 @@ model = TransformedTargetRegressor(
 Congrats ! You have completed the data preparation exercises. Now you can choose one of the two model you'll want to train - or do both ! 💪
 
 ::: {.callout-tip}
-Scikit-learn allows you to access every step defined in the `rf_pipeline` (preprocessing or RF).  
+Scikit-learn allows you to access every step defined in the `rf_pipeline` (preprocessing or RF).
 
 ```python
 rf_pipeline["preprocessing"]   # access to the first step
@@ -713,10 +671,10 @@ For more details, go to [the documentation](https://scikit-learn.org/stable/modu
 
 Congrats 🎉! In this section, you have successfully :
 
-- loaded the data, 
-- had a look at variable to select best variables for the model, 
+- loaded the data,
+- had a look at variable to select best variables for the model,
 - cleaned data (time variables, categorical variables),
-- plotted the target variable and defined that it needs to be transformed, 
+- plotted the target variable and defined that it needs to be transformed,
 - and finally, defined the pre-processing steps of our machine learning with scikit-learn's pipeline.
 
-You can now have a look at how to train a [random forest model](2-RF_model.qmd) and a [gradient boosting model](2-GB_model.qmd). 
+You can now have a look at how to train a [random forest model](2-RF_model.qmd) and a [gradient boosting model](2-GB_model.qmd).

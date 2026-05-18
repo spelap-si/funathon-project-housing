@@ -1,110 +1,115 @@
 # %%
-# ============================================
-# STEP 1 — Generate synthetic regression data
-# ============================================
-
-import numpy as np
-import pandas as pd
-
-from sklearn.datasets import make_regression
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
+from preprocess import complete_pre_processing
+from log_mlflow import log_to_mlflow
+from pipeline import set_pipeline
+from utils import setup_logging, set_seed
 
-# Reproducibility
-RANDOM_STATE = 20230516
-np.random.seed(RANDOM_STATE)
+logger = setup_logging()
+# %%
+logger.info("Importing data")
 
-# Generate numeric regression data
-X_num, y = make_regression(
-    n_samples=2000,
-    n_features=5,
-    noise=10.0,
-    random_state=RANDOM_STATE
-)
-
-# Create a DataFrame
-df = pd.DataFrame(X_num, columns=[f"num_{i}" for i in range(X_num.shape[1])])
-
-# Add a categorical feature
-df["category"] = np.random.choice(["A", "B", "C"], size=len(df))
-
-# Add target
-df["target"] = y
-
+df = complete_pre_processing()
 
 # %%
-# ============================================
-# STEP 2 — Preprocessing
-#   - Outlier removal
-#   - Scaling
-#   - One-hot encoding
-# ============================================
-
-# Simple outlier removal using IQR on numeric columns
-numeric_cols = [col for col in df.columns if col.startswith("num_")]
-
-Q1 = df[numeric_cols].quantile(0.25)
-Q3 = df[numeric_cols].quantile(0.75)
-IQR = Q3 - Q1
-
-mask = ~((df[numeric_cols] < (Q1 - 1.5 * IQR)) |
-         (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)
-
-df = df.loc[mask].reset_index(drop=True)
-
-# Split features / target
-X = df.drop(columns="target")
-y = df["target"]
-
-# Column types
-categorical_cols = ["category"]
-
-# Preprocessing pipeline
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("num", StandardScaler(), numeric_cols),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols),
-    ]
-)
-
-
 # %%
-# ============================================
-# STEP 3 — Train / test split, model fitting,
-#          and performance evaluation
-# ============================================
+logger.info("Pipeline")
 
-# Train-test split
+logger.info("Setting training data sets")
+X = df.drop(columns=["price_sqm"])
+y = df["price_sqm"]
+
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.25, random_state=RANDOM_STATE
+    X, y,
+    test_size=0.2,
+    random_state=set_seed()
 )
 
-# Full modeling pipeline
-model = Pipeline(
-    steps=[
-        ("preprocessing", preprocessor),
-        ("regressor", RandomForestRegressor(
-            n_estimators=200,
-            random_state=RANDOM_STATE,
-            n_jobs=-1
-        )),
-    ]
+
+# %%
+
+
+BEST_ITER = 1000
+BEST_LR = 0.3
+BEST_DEPTH = 20
+BEST_MIN_LEAF = 50
+BEST_L2 = 0
+
+gb_params = {
+    "max_iter": BEST_ITER,
+    "learning_rate": BEST_LR,
+    "max_depth": BEST_DEPTH,
+    "min_samples_leaf": BEST_MIN_LEAF,
+    "l2_regularization": BEST_L2,
+    "random_state": set_seed()
+}
+
+gb_model_final = set_pipeline(
+    "GB",
+    HistGradientBoostingRegressor(
+        **gb_params
+    )
+)
+gb_model_final.fit(X_train, y_train)
+
+
+# %%
+# Saving model to MLFlow
+logger.info("Storing GB model to MLFlow")
+exp_name = "Funathon - project 1"
+
+log_to_mlflow(
+    exp_name=exp_name,
+    model=gb_model_final,
+    model_name="GB",
+    model_params=gb_params,
+    X_train=X_train,
+    X_test=X_test,
+    y_train=y_train,
+    y_test=y_test
 )
 
-# Fit model
-model.fit(X_train, y_train)
+# %%
+logger.info("Setting training data sets")
+X = df.drop(columns=["price_sqm"])
+y = df["price_sqm"]
 
-# Predictions
-y_pred = model.predict(X_test)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=set_seed()
+)
 
-# Evaluation
-rmse = mean_squared_error(y_test, y_pred)
-r2 = r2_score(y_test, y_pred)
+# %%
+logger.info("Fitting RF model")
+rf_params = {
+        "n_estimators": 80,
+        "max_features": "sqrt",
+        "min_samples_leaf": 40
+    }
 
-print(f"RMSE: {rmse:.3f}")
-print(f"R² score: {r2:.3f}")
+rf_model_final = set_pipeline(
+    "RF",
+    RandomForestRegressor(
+        **rf_params
+    )
+)
+rf_model_final.fit(X_train, y_train)
+
+# %%
+# Saving model to MLFlow
+logger.info("Storing RF model to MLFlow")
+
+log_to_mlflow(
+    exp_name=exp_name,
+    model=rf_model_final,
+    model_name="RF",
+    model_params=rf_params,
+    X_train=X_train,
+    X_test=X_test,
+    y_train=y_train,
+    y_test=y_test
+)
+
 # %%

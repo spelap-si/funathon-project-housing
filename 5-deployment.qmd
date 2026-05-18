@@ -31,18 +31,42 @@ graph TD
 - [`uvicorn`](https://www.uvicorn.org/) — ASGI server used to run the FastAPI application locally
 :::
 
-# Exercice 8 – Deploying a local API
 
-1. Add the necessary packages to deploy an API using `uv`. 
 
-```{.bash}
-#| eval: false
-uv add fastapi uvicorn mlflow pydantic
+::: {.callout-tip title="If you want to fetch back final RF and GB model" collapse="true"}
+
+You can fetch back the final trained models by executing the following code.
+The fetched models can then be used to predict any values and evaluate it. 
+
+
+```python
+from joblib import load
+import os
+import s3fs
+
+# Create filesystem object
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/rf_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    rf_model_final = load(model)
+
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/gb_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    gb_model_final = load(model)
+
+
 ```
 
-2. We will first deploy a basic fastAPI. FastAPI allows you to define an HTTP endpoint in just a few lines of Python. Here is a minimal working example:
+:::
 
-```{.python}
+# Exercice 8 – Deploying a local API
+
+1. We will first deploy a basic fastAPI. FastAPI allows you to define an HTTP endpoint in just a few lines of Python. Here is a minimal working example:
+
+```{.python filename="api.py"}
 from fastapi import FastAPI
 
 app = FastAPI()
@@ -60,7 +84,23 @@ uvicorn api:app --reload
 
 The `--reload` flag restarts the server automatically whenever you save changes to `api.py`, which is very convenient during development.
 
+If you saved your file into a specific folder, you can access it with the following command : 
+
+```{.bash filename="terminal"}
+uvicorn folder.script_name:app --reload
+```
+
+For example, you can launch the api with the following code. 
+It serves as a fall-back option.   
+
+```{.bash filename="terminal"}
+uvicorn intermediate_solutions.5_api:app --reload
+```
+
 Then open [http://localhost:8000](http://localhost:8000) in your browser. You should see the JSON response `"Housing price prediction API is running"`.
+
+
+::: {.callout-tip title="Using the Terminal to test the API directly"}
 
 Without closing the Terminal where the API runs, you can also test the API from the Terminal. 
 Open a new Terminal and run a simple `GET` request on the default endpoint with the following `curl` command:
@@ -70,6 +110,21 @@ curl "http://127.0.0.1:8000"
 ```
 
 The response should be the default response defined above as a JSON format. 
+In the terminal where your API runs, you should also see that it received a GET request and that the response status was "200 OK". 
+
+```{.bash filename="terminal"}
+~/work/funathon-project1$ uvicorn intermediate_solutions.5_api:app --reload
+INFO:     Will watch for changes in these directories: ['/home/onyxia/work/funathon-project1']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [42438] using StatReload
+INFO:     Started server process [42440]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:60728 - "GET / HTTP/1.1" 200 OK
+```
+
+:::
+
 
 If you want to close down the API, go to the Terminal where it has been laucnhed and press <kbd>CTRL</kbd>+<kbd>C</kbd> from your keyboard. 
 
@@ -105,7 +160,7 @@ In this example, `GET /` just returns a static message — no body needed from t
 :::
 
 
-3. Building on this first basic API, modify the default endpoint to give back a message indicating what the API does, the model name and version. 
+2. Building on this first basic API, modify the default endpoint to give back a message indicating what the API does, the model name and version. 
 
 
 ::: {.callout-tip}
@@ -126,29 +181,34 @@ def show_welcome_page():
 
 :::
 
-4. Loading the trained model
+3. Loading the trained model
 
 We load the model **once at startup**, so that it does not need to be reloaded on every request. We retrieve it from MLFlow using the run ID saved in Part 4.
 
-```{python}
-#| eval: false
+``` python
 import mlflow.sklearn
 
-MODEL_URI = "runs:/<your_run_id>/model"
+MODEL_URI = "runs:/<mlflow_run_id>/run-relative/path/to/model"  # For example "runs:/04d6f9d4ac4941ebb56a6c9ef2de46c2/model"
+MODEL_URI = "models:/<model_name>/<model_version>"  # For example "models:/GB/6"
 model = mlflow.sklearn.load_model(MODEL_URI)
 ```
 
 
-5. We will now write the prediction endpoint. To do so, we will predict and the loaded model into a `/predict` endpoint.
+4. We will now write the prediction endpoint. To do so, we will predict and the loaded model into a `/predict` endpoint.
 
-Create a file `api.py` with the following content:
+Update your file `api.py` to insert this new endpoint. 
+Don't forget to transform data so that it matches the data types expected from the model. 
+Input should have a similar format to `X_test`. 
 
 ```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
 #| eval: false
+
 import pandas as pd
 import mlflow.sklearn
 from fastapi import FastAPI
-
 
 # ── App initialization ──────────────────────────────────────────────────────
 
@@ -161,14 +221,14 @@ app = FastAPI(
 
 # ── Model loading (done once at startup) ────────────────────────────────────
 
-MODEL_URI = "runs:/<your_run_id>/model"
+MODEL_URI = "models:/GB/6"
 model = mlflow.sklearn.load_model(MODEL_URI)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/")
-def show_welcome_page():
+def show_welcome_page(MODEL_URI=MODEL_URI):
     """
     Show welcome page with model name and version.
     """
@@ -176,7 +236,7 @@ def show_welcome_page():
     return {
         "message": "API to predict housing price in the Paris region",
         "model_name": "Paris_ML",
-        "model_version": "0.1",
+        "model_version": MODEL_URI,
     }
 
 @app.post("/predict")
@@ -185,21 +245,37 @@ def predict(prop_features: dict):
     Accepts a JSON description of a property and returns the predicted price per m²
     and the estimated total price.
     """
+
     prop_features_df = pd.DataFrame([prop_features])
+
+    # Turning prop_type to Categorical data
+    prop_features_df["prop_type"] = pd.Categorical(
+        prop_features_df["prop_type"],
+        categories=["1", "2"],
+        ordered=False
+    ).rename_categories({"1": "House", "2": "Flat"})
+
+    # Turning trans_date to datetime format
+    prop_features_df["trans_date"] = pd.to_datetime(prop_features_df["trans_date"], format="%d/%m/%Y")
+
+    # Storing floor area
     farea = prop_features["farea"]
-    predicted_price_sqm = model.predict(prop_features_df.drop(columns="farea"))[0]
+
+    # Run the prediction
+    predicted_price_sqm = model.predict(prop_features_df)[0]
     predicted_price = predicted_price_sqm * farea
 
     return {
-        "predicted_price_sqm": round(float(predicted_price_sqm), 2),
-        "predicted_price": round(float(predicted_price), 2),
+        "predicted_price_sqm": round(float(predicted_price_sqm), 0),
+        "predicted_price": round(float(predicted_price), 0),
         "farea": farea,
     }
+
 ```
 
 
 
-6. We will check that the API runs locally. Predict the price of a property with the following characteristics using python's `requests` : 
+5. We will check that the API runs locally. Predict the price of a property with the following characteristics using python's `requests` : 
 - a flat (prop_type: 2):
   - a floor area of 65m²;
   - one shower;
@@ -210,78 +286,61 @@ def predict(prop_features: dict):
 - the building: 
   - is located at 85, Rue Manin 75019 Paris (look up the latitude and longitude);
   - has been built in 1870;
-  - has 6 floors. 
+  - has 6 floors;
+  - has an elevator;
+  - has stairs. 
 
-To avoid typing everything, here is the list of variables : 
+
+To avoid typing everything, here is the list of variables.
+Don't forget to see how the variables are encoded in the [dedicated section](intro_data.qmd) ! 
 
 
-```{.python}
+``` python
 {
-    "trans_year": 1000,
-    "prop_type": 1,
-    "prop_year_harm_10": 1000,
-    "prop_loc_x": 2.43,
-    "prop_loc_y": 47.32, 
-    "n_floors": 0,
+    "farea": 10,
+    "trans_date": "01/02/2023",
+    "trans_year": 2023,
+    "trans_month": 2,
+    "prop_type": 2,
+    "prop_year_harm_10": 1850,
+    "prop_loc_x": 2.1,
+    "prop_loc_y": 48.8, 
+    "has_cheating": 0, 
+    "has_elec": 0, 
+    "has_elevator": 1,
+    "has_gas": 0, 
+    "has_mdrainage": 2, 
+    "has_rchute": 0,
+    "has_water": 0, 
+    "n_floors": 6,
     "n_bath": 0,
-    "n_show": 0,
-    "n_sink": 0,
-    "n_wc": 0,
-    "n_mrooms": 0,
     "n_eatr": 0,
-    "n_slr": 0,
-    "n_kit8": 0,
+    "n_kit8": 1,
     "n_kit9": 0,
-    "n_washr": 0,
     "n_ancrooms": 0,
-    "n_rooms": 0, 
-    "farea": 0,
-    "nth_floor": 0,
-    "n_terrace": 0,
-    "n_attic": 0,
-    "n_basmt": 0,
-    "n_otherannex": 0
+    "n_attic": 1,
+    "n_basmt": 1,
+    "n_garage": 0, 
+    "n_pool": 0, 
+    "n_mrooms": 3,
+    "n_otherannex": 0,
+    "n_rooms": 4,
+    "n_show": 1,
+    "n_sink": 1,
+    "n_slr": 2,
+    "n_terrace": 1,
+    "n_washr": 1,
+    "n_wc": 1,
+    "nth_floor": 3,
+    "s_land_agri": 0, 
+    "s_land_artif": 0, 
+    "s_land_nat": 0, 
+    "stair": 1 
   }
 ```
 
 You can now query your API with python's `request`.
 
-
-::: {.callout-tip}
-
-You can also quesry the API using the swagger that FastAPI builds or use a `curl` command from the terminal. 
-
-```{.bash filename="terminal"}
-curl -X POST "http://localhost:8000/predict" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "trans_year": 1000,
-    "prop_type": 1,
-    "prop_year_harm_10": 1000,
-    "prop_loc_x": 2.43,
-    "prop_loc_y": 47.32, 
-    "n_floors": 0,
-    "n_bath": 0,
-    "n_show": 0,
-    "n_sink": 0,
-    "n_wc": 0,
-    "n_mrooms": 0,
-    "n_eatr": 0,
-    "n_slr": 0,
-    "n_kit8": 0,
-    "n_kit9": 0,
-    "n_washr": 0,
-    "n_ancrooms": 0,
-    "n_rooms": 0,
-    "farea": 0, 
-    "nth_floor": 0,
-    "n_terrace": 0,
-    "n_attic": 0,
-    "n_basmt": 0,
-    "n_otherannex": 0
-  }'
-```
-:::
 
 
 ```{python}
@@ -289,30 +348,45 @@ curl -X POST "http://localhost:8000/predict" \
 import requests
 
 prop_features = {
-    "trans_year": 2023,
-    "prop_type": 2,
-    "prop_year_harm_10": 1870,
-    "prop_loc_x": 2.3845,
-    "prop_loc_y": 48.8830, 
-    "n_floors": 6,
-    "n_bath": 0,
-    "n_show": 1,
-    "n_sink": 1,
-    "n_wc": 1,
-    "n_mrooms": 3,
-    "n_eatr": 0,
-    "n_slr": 2,
-    "n_kit8": 1,
-    "n_kit9": 0,
-    "n_washr": 1,
-    "n_ancrooms": 0,
-    "n_rooms": 4,
-    "farea": 65,
-    "nth_floor": 3,
-    "n_terrace": 1,
-    "n_attic": 1,
-    "n_basmt": 1,
-    "n_otherannex": 0
+  "farea": 65,
+  "trans_date": "01/02/2023",
+  "trans_year": 2023,
+  "trans_month": 2,
+  "prop_type": 2,
+  "prop_year_harm_10": 1870,
+  "prop_loc_x": 2.3845,
+  "prop_loc_y": 48.8830, 
+  "has_cheating": 0, 
+  "has_elec": 2, 
+  "has_elevator": 2,
+  "has_gas": 2, 
+  "has_mdrainage": 2, 
+  "has_rchute": 0,
+  "has_water": 2, 
+  "n_floors": 6,
+  "n_bath": 0,
+  "n_eatr": 0,
+  "n_kit8": 1,
+  "n_kit9": 0,
+  "n_ancrooms": 0,
+  "n_attic": 1,
+  "n_basmt": 1,
+  "n_garage": 0, 
+  "n_pool": 0, 
+  "n_mrooms": 3,
+  "n_otherannex": 0,
+  "n_rooms": 4,
+  "n_show": 1,
+  "n_sink": 1,
+  "n_slr": 2,
+  "n_terrace": 1,
+  "n_washr": 1,
+  "n_wc": 1,
+  "nth_floor": 3,
+  "s_land_agri": 0, 
+  "s_land_artif": 0, 
+  "s_land_nat": 0, 
+  "stair": 2 
   }
 
 response = requests.post("http://localhost:8000/predict", json=prop_features)
@@ -322,11 +396,7 @@ print(response.json())
 Expected output:
 
 ```{.json}
-{
-  "price_sqm": 9842.15,
-  "predicted_price": 639739.75,
-  "farea": 65
-}
+{'predicted_price_sqm': 2081.0, 'predicted_price': 135273.0, 'farea': 65}
 ```
 
 

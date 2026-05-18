@@ -30,6 +30,90 @@ For more information, you can read the paragraph on RF hyperparameters [here](ht
 
 # Exercice 4: Train your first Random Forest model
 
+
+
+::: {.callout-note title="Fall back code"}
+In case you start from here, here is the parameters you need from past sections : 
+
+
+```{python}
+#| code-fold: true
+#| code-overflow: scroll
+#| eval: false
+
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
+from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
+from sklearn.pipeline import Pipeline
+
+RANDOM_STATE = 202605
+
+
+def log_transform(y):
+    return np.log10(y)
+
+
+def inverse_log_transform(y):
+    return 10 ** y
+
+
+y_transformer = FunctionTransformer(
+    func=log_transform,
+    inverse_func=inverse_log_transform)
+
+
+def date_to_days(X: pd.Series, ref_date:pd.Timestamp):
+    # converts a date to a difference to ref_date :
+    diff_dt = pd.to_datetime(X) - ref_date
+    # Extract days part from datetime object
+    diff_dt = diff_dt.dt.days
+    # Transform it from a Pandas series to a Numpy nd array, used by scikit learn for input
+    diff_dt = diff_dt.to_numpy().reshape(-1, 1)
+
+    return diff_dt
+
+
+date_transformer = FunctionTransformer(
+    date_to_days,
+    kw_args={"ref_date": pd.Timestamp('2010-01-01 00:00')}
+    )
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("cat", OneHotEncoder(handle_unknown="ignore"), ["prop_type", "prop_year_harm_10"]),  # one-hot encoder on feature
+        ("dat", date_transformer, "trans_date") # feature time since 01-01-2010
+    ],
+    remainder="passthrough"  # to keep features not transformed
+)
+
+rf_params = {
+    "n_estimators": 100,
+    "max_depth": 5,
+    "max_features": "sqrt",
+    "min_samples_split": 2,
+    "min_samples_leaf": 10,
+    "random_state": RANDOM_STATE,
+    "oob_score": True,
+    "n_jobs": -1,  # The number of jobs to run in parallel, -1 using all processors
+}
+
+rf_pipeline = Pipeline([
+    ('preprocessing', preprocessor),
+    ('RF', RandomForestRegressor(**rf_params))
+])
+
+model = TransformedTargetRegressor(
+    regressor=rf_pipeline,
+    transformer=y_transformer
+)
+```
+
+
+
+:::
+
+
 1.  Using the `RandomForestRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html), define a basic model with the following hyperparameters :
 
     -   n_estimators=50
@@ -38,11 +122,11 @@ For more information, you can read the paragraph on RF hyperparameters [here](ht
 
     -   min_samples_leaf=10
 
-    Train the model with the remaining non transformed target (it should take about 5 minutes to train).
-
     As it's only a first step we chose to simplify the exercise. First, we will drop the `trans_date` and `prop_type` features. Secondly, we will work with the **non transformed target** (i.e.price per square meter) and not use the transformed target (i.e. log of the price per square meter) defined at the end of the pre-processing.
 
     We will come back to this later on and chain it with the preprocessing steps.
+
+    Train the model with the remaining non transformed target (it should take a few minutes to train).
 
     > **Note: All parameters of RandomForestRegressor have a default value - you only need to explicitly pass the ones you wish to override.**
 
@@ -68,13 +152,14 @@ rf = RandomForestRegressor(
 )
 
 # Defining train and test sets
-X = df.drop(columns=["price_sqm", "trans_date", "prop_type"])  
-y = df["price_sqm"]  
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=RANDOM_STATE
-)
+X_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_train.parquet')
+X_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_test.parquet')
+
+X_train = X_train.drop(columns=["prop_type", "trans_date"])
+X_test  =  X_test.drop(columns=["prop_type", "trans_date"])
+
+y_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_train.parquet')["price_sqm"]
+y_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_test.parquet')["price_sqm"]
 
 # Train the model
 rf.fit(X_train, y_train)
@@ -115,10 +200,10 @@ rf.oob_score_
 from sklearn.metrics import mean_squared_error
 
 # Predictions on train set
-y_pred = rf.predict(X_test)
+y_pred_test = rf.predict(X_test)
 
 # Print the error
-print(mean_squared_error(y_test, y_pred))
+print(mean_squared_error(y_test, y_pred_test))
 
 ```
 
@@ -172,8 +257,13 @@ X_sub = X_train.filter(items=y_sub.index, axis=0 )  # sampling X_train
 
     If you need, here is the code to calculate and store the OOB score.
 
-    ```{python}
+    ``` python
+    import warnings 
+
     oob_scores = []
+    min_estimators = 5 # Set this parameter
+    max_estimators = 100  # Set this parameter
+    metric = "r2"  # Set the metric you want to choose
     warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
     # filterwarnings remove some warnings messages
     for n in range(min_estimators, max_estimators, 10):
@@ -196,8 +286,7 @@ X_sub = X_train.filter(items=y_sub.index, axis=0 )  # sampling X_train
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
-import warnings 
-import numpy as np
+import warnings
 
 metric = "r2"
 min_estimators=5
@@ -347,15 +436,11 @@ Note that in the Preprocessing section, you saw how to build a Pipeline. In this
 #| eval: false
 
 # Split features / target
-X = df.drop(columns="price_sqm")  
-y = df["price_sqm"]  
+X_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_train.parquet')
+X_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_test.parquet')
+y_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_train.parquet')["price_sqm"]
+y_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_test.parquet')["price_sqm"] 
 
-# Split train / test set
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=RANDOM_STATE
-)
 ```
 
 1.  Create a dictionary with the 3 hyperparameters to test (`n_estimators`, `max_features` and `min_samples_leaf`) for training.
@@ -380,8 +465,8 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 param_grid = {
     "regressor__RF__n_estimators": [80],
-    "regressor__RF__max_features": ["sqrt", "log2"],
-    "regressor__RF__min_samples_leaf": [5, 10, 50]
+    "regressor__RF__max_features": ["sqrt"],
+    "regressor__RF__min_samples_leaf": [40, 50, 75]
 }
 ```
 
@@ -435,15 +520,38 @@ grid_search.myfittedparam_
 #| code-overflow: scroll
 #| eval: false
 
-rf_best = grid_search.best_estimator_
-print(type(rf_best))
+rf_model_final = grid_search.best_estimator_
+print(type(rf_model_final))
 
-rf_best.fit(X_train, y_train)
+rf_model_final.fit(X_train, y_train)
 ```
 
 Congrats ! You have optimized your RF model. Now, you need to evaluate its accuracy — that is, how close the model's predictions are to the actual values..
 
 # Exercice 6: Model evaluation
+
+
+::: {.callout-tip title="If you're stuck - fetch back final RF model"}
+
+If you're stuck, you can fetch back the final trained model by executing the following code.
+The fetched model can then be used to predict any values and evaluate it. 
+
+
+```python
+from joblib import load
+import os
+import s3fs
+
+# Create filesystem object
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/rf_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    rf_model_final = load(model)
+
+```
+:::
 
 Now that your model has been optimized, it is time to rigorously evaluate its performance on the test set — data the model has never seen during training. This step is essential to assess how well your model generalizes to new observations.
 
@@ -461,7 +569,7 @@ Several metrics are commonly used to evaluate regression models:
 #| code-overflow: scroll
 #| eval: false
 
-y_pred = rf_best.predict(X_test)
+y_pred_test = rf_model_final.predict(X_test)
 ```
 
 2.  Calculate the three evaluation metrics on the test set.
@@ -480,9 +588,9 @@ You can use `mean_squared_error`, `mean_absolute_error`, and `r2_score` from `sk
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-mae  = mean_absolute_error(y_test, y_pred)
-r2   = r2_score(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+mae  = mean_absolute_error(y_test, y_pred_test)
+r2   = r2_score(y_test, y_pred_test)
 
 print(f"RMSE : {rmse:.2f}")
 print(f"MAE  : {mae:.2f}")
@@ -493,7 +601,7 @@ print(f"R²   : {r2:.4f}")
 
 ::: {.callout-tip collapse="true" title="Hint"}
 
-Use `matplotlib.pyplot` to create a scatter plot of `y_test` against `y_pred`. Add a reference diagonal line (representing perfect predictions) using `ax.plot([min, max], [min, max])`.
+Use `matplotlib.pyplot` to create a scatter plot of `y_test` against `y_pred_test`. Add a reference diagonal line (representing perfect predictions) using `ax.plot([min, max], [min, max])`.
 
 :::
 
@@ -502,21 +610,32 @@ Use `matplotlib.pyplot` to create a scatter plot of `y_test` against `y_pred`. A
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
+import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots(figsize=(7, 7))
 
-ax.scatter(y_test, y_pred, alpha=0.3, s=5, label="Predictions")
+def predicted_actual_plot(y_test, y_pred_test, model_name):
+    fig, ax = plt.subplots(figsize=(7, 7))
 
-lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
-ax.plot(lims, lims, "r--", linewidth=1.5, label="Perfect prediction")
+    ax.scatter(y_test, y_pred_test, alpha=0.3, s=5, label="Predictions")
 
-ax.set_xlabel("Actual values")
-ax.set_ylabel("Predicted values")
-ax.set_title("Predicted vs. Actual values on the test set")
-ax.legend()
-plt.tight_layout()
-plt.show()
+    lims = [min(y_test.min(), y_pred_test.min()),
+            max(y_test.max(), y_pred_test.max())]
+    ax.plot(lims, lims, "r--", linewidth=1.5, label="Perfect prediction")
+
+    ax.set_xlabel("Actual values (log)")
+    ax.set_ylabel("Predicted values (log)")
+    ax.set_title(f"Comparison of predicted values vs. actual values on the test set\n({model_name})")
+    ax.legend()
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.tight_layout()
+    return fig
+
+
+predicted_actual_plot(y_test, y_pred_test, "Random Forest")
 ```
+
+
 
 # Summary
 

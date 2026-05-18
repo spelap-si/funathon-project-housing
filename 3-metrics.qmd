@@ -103,22 +103,39 @@ In this exercise, you will generate predictions from the best RF and GB model an
 
 0. Load the RF and GB models
 
-```{python}
-#| code-fold: true
-#| code-summary: See the solution
-#| code-overflow: scroll
-#| eval: false
+::: {.callout-tip title="If you want to fetch back final RF and GB model" collapse="true"}
 
-# best RF
-rf_model = rf_best
+You can fetch back the final trained models by executing the following code.
+The fetched models can then be used to predict any values and evaluate it. 
 
-# best GB
-gb_model = gb_model_final
+
+```python
+from joblib import load
+import os
+import s3fs
+
+# Create filesystem object
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/rf_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    rf_model_final = load(model)
+
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/gb_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    gb_model_final = load(model)
 
 ```
 
-1.  Generate predictions on the test set using the best RF model from Exercise 5 and compute the residuals.
+You can also also fall back to the current state by running the script in `intermediate_solutions/0_fallback.py`.
+It will load the model,  all parameters and data necessary to keep on going through the next exercices.  
 
+:::
+
+
+1.  Generate predictions on the test set using the best RF and GB models from exercise 5 and compute their residuals.
 
 ```{python}
 #| code-fold: true
@@ -127,12 +144,12 @@ gb_model = gb_model_final
 #| eval: false
 
 # best RF
-y_pred_RF = rf_best.predict(X_test)
-RF_residuals = y_test - y_pred_RF
+y_pred_RF = rf_model_final.predict(X_test)
+rf_residuals = y_test - y_pred_RF
 
 # best GB
 y_pred_GB = gb_model_final.predict(X_test)
-GB_residuals = y_test - y_pred_GB
+gb_residuals = y_test - y_pred_GB
 
 ```
 
@@ -163,7 +180,7 @@ def print_metrics(model, split, X=X_train, y=y_train):
     r2  = r2_score(y, y_pred)
     print(f"{split} — RMSE: {rmse:.2f}  |  MAE: {mae:.2f}  |  R²: {r2:.4f}")
 
-models = [("RF", rf_model), ("GB", gb_model)]
+models = [("RF", rf_model_final), ("GB", gb_model_final)]
 
 for name, model in models:
     print_metrics(model, name, X_test, y_test)
@@ -241,8 +258,8 @@ Pass the residuals series and the RMSE value computed in Exercise 8. The RMSE va
 #| eval: false
 
 fig, ax = plt.subplots()
-residuals_distribution(RF_residuals, rmse_rf, ax=ax, label=f"RF (RMSE={rmse_rf:.3f})", color="steelblue")
-residuals_distribution(GB_residuals, rmse_gb, ax=ax, label=f"GB (RMSE={rmse_gb:.3f})", color="darkorange")
+residuals_distribution(rf_residuals, rmse_rf, ax=ax, label=f"RF (RMSE={rmse_rf:.3f})", color="steelblue")
+residuals_distribution(gb_residuals, rmse_gb, ax=ax, label=f"GB (RMSE={rmse_gb:.3f})", color="darkorange")
 plt.show()
 ```
 
@@ -316,8 +333,8 @@ def target_distribution(y: pd.Series):
     fig = plt.figure()
     plt.plot(axe, y_sorted)
     plt.xlabel("Percentile")
-    plt.ylabel("Valeur")
-    plt.title("Distribution ordonnée")
+    plt.ylabel("Value (EUR)")
+    plt.title("Distribution")
     return fig
 
 ```
@@ -384,7 +401,7 @@ plt.show()
 ```
 :::
 
-7. (Only for RF model) Write a `calculate_importance(X_test, y_test, RANDOM_STATE, rf_best, SCORING)` function, which returns a sorted Series of importance scores with features name as index. The parameters are the test set (`X_test` and `y_test`), the RF model `rf_best` trained in last section and the scoring chosen for the impurity reduction.
+7. (Only for RF model) Write a `calculate_importance(X_test, y_test, RANDOM_STATE, rf_model_final, SCORING)` function, which returns a sorted Series of importance scores with features name as index. The parameters are the test set (`X_test` and `y_test`), the RF model `rf_model_final` trained in last section and the scoring chosen for the impurity reduction.
 
 Note that permutation importance is computationally expensive on a large test set. The `calculate_importance()` function automatically subsamples up to 100,000 observations before computing importance scores. This subsample does not change the result.
 
@@ -439,7 +456,6 @@ def importance_plot(importances):
     ax.set_title("Permutation importance (top 20)")
     ax.set_xlabel("Mean increase in RMSE")
     plt.tight_layout()
-    plt.savefig("importances.png", dpi=150)
     return fig
 
 ```
@@ -459,9 +475,8 @@ Calculate the importance with the train set and the final RF model. The `SCORING
 #| eval: false
 
 score = "r2"
-RANDOM_STATE = 202605
 
-importances = calculate_importance(X_test, y_test, RANDOM_STATE, rf_best, score)
+importances = calculate_importance(X_test, y_test, RANDOM_STATE, rf_model_final, score)
 fig_importance = importance_plot(importances)
 plt.show()
 ```

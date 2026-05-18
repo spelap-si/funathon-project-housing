@@ -26,6 +26,10 @@ jobs:
         - name: Set up Quarto
           uses: quarto-dev/quarto-actions/setup@v2
 
+        # - name: Generate model  # wont work as missing S3 env vars
+        #   run: |
+        #     uv run temp/1_generate_models.py 
+
         - name: Render
           run: uv run quarto render
 

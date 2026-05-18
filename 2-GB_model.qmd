@@ -43,11 +43,94 @@ For more information, you can read the detailed presentation of the gradient boo
 
 To allow for comparison with the random forest section, we chose to use the same conditions : dropping the `trans_date` and `prop_type` features and working with the **non transformed target** (i.e.price per square meter) and not use the transformed target (i.e. log of the price per square meter) defined at the end of the pre-processing. We will come back to this later on and chain it with the preprocessing steps.
 
+
+::: {.callout-note title="Fall back code"}
+In case you start from here, here is the parameters you need from past sections : 
+
+
+```{python}
+#| code-fold: true
+#| code-overflow: scroll
+#| eval: false
+
+import pandas as pd 
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
+from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
+from sklearn.pipeline import Pipeline
+
+RANDOM_STATE=202605
+
+def log_transform(y):
+    return np.log10(y)
+
+def inverse_log_transform(y):
+    return 10 ** y
+
+y_transformer = FunctionTransformer(
+    func=log_transform,
+    inverse_func=inverse_log_transform)
+
+def date_to_days(X: pd.Series, ref_date:pd.Timestamp):
+    # converts a date to a difference to ref_date :
+    diff_dt = pd.to_datetime(X) - ref_date
+    # Extract days part from datetime object
+    diff_dt = diff_dt.dt.days
+    # Transform it from a Pandas series to a Numpy nd array, used by scikit learn for input
+    diff_dt = diff_dt.to_numpy().reshape(-1, 1)
+
+    return diff_dt
+
+date_transformer = FunctionTransformer(
+    date_to_days,
+    kw_args={"ref_date": pd.Timestamp('2010-01-01 00:00')}
+    )
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("cat", OneHotEncoder(handle_unknown="ignore"), ["prop_type", "prop_year_harm_10"]),  # one-hot encoder on feature
+        ("dat", date_transformer, "trans_date") # feature time since 01-01-2010
+    ],
+    remainder="passthrough"  # to keep features not transformed
+)
+
+import matplotlib.pyplot as plt
+
+
+def predicted_actual_plot(y_test, y_pred_test, model_name):
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    ax.scatter(y_test, y_pred_test, alpha=0.3, s=5, label="Predictions")
+
+    lims = [min(y_test.min(), y_pred_test.min()),
+            max(y_test.max(), y_pred_test.max())]
+    ax.plot(lims, lims, "r--", linewidth=1.5, label="Perfect prediction")
+
+    ax.set_xlabel("Actual values (log)")
+    ax.set_ylabel("Predicted values (log)")
+    ax.set_title(f"Comparison of predicted values vs. actual values on the test set\n({model_name})")
+    ax.legend()
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.tight_layout()
+    return fig
+
+
+```
+
+
+
+:::
+
 ### Exercice 7: Train your first Gradient Boosting model
 
-1.  Using the `HistGradientBoostingRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html), define and train a baseline model with **default hyperparameters** using the same training set `X_train` and `y_train` defined in the preprocessing section.
+1.  Using the `HistGradientBoostingRegressor` class and its [scikit-learn documentation page](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html), define and train a baseline model with **default hyperparameters**. 
+For convenience, load the training and testing datasets `X_train, X_test, y_train, y_test` that were already defined at the end of the [pre-processing section](1-preprocessing.qmd).
+Drop the features `prop_type`, `trans_date` from `X_train` and `X_test`. 
+It will simplify the scikit learn code - in real life you wouldn't drop these features and that's what we'll do later on.
 
 **Note that just like for `RandomForestRegressor`, all parameters have default values — you do not need to pass any argument to get a working model.**
+
 
 ```{python}
 #| code-fold: true
@@ -56,13 +139,14 @@ To allow for comparison with the random forest section, we chose to use the same
 #| eval: false
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-X = df.drop(columns=["price_sqm", "trans_date", "prop_type"]) 
-y = df["price_sqm"]
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=RANDOM_STATE
-)
+X_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_train.parquet')
+X_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_test.parquet')
+
+X_train = X_train.drop(columns=["prop_type", "trans_date"])
+X_test  =  X_test.drop(columns=["prop_type", "trans_date"])
+
+y_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_train.parquet')["price_sqm"]
+y_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_test.parquet')["price_sqm"]
 
 gb_baseline = HistGradientBoostingRegressor(random_state=RANDOM_STATE)
 gb_baseline.fit(X_train, y_train)
@@ -79,6 +163,7 @@ Note that computing metrics on the training set alongside the test set is import
 #| eval: false
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error, r2_score
 
+
 def print_metrics(model, split, X=X_train, y=y_train):
     """
     Print metrics for trained model
@@ -88,12 +173,15 @@ def print_metrics(model, split, X=X_train, y=y_train):
     mae = mean_absolute_error(y, y_pred)
     r2  = r2_score(y, y_pred)
     print(f"{split} — RMSE: {rmse:.2f}  |  MAE: {mae:.2f}  |  R²: {r2:.4f}")
-    
+
+
 list = [("Train", X_train, y_train), ("Test", X_test, y_test)]
 model = gb_baseline
 
 for split, X, y in list:
     print_metrics(model, split, X, y)
+
+
 ```
 
 3.  How does the default Gradient Boosting model compare with the best Random Forest model from Exercise 6?
@@ -151,14 +239,12 @@ We use the same `X_train`, `X_test`, `y_train`, `y_test` splits defined in the p
 
 ### Exercice 8: Tuning Gradient Boosting hyperparameters
 
-0.  For convenience, we prepare the data and pipeline with the following instructions :
-    -   Drop the features `prop_type`, `trans_date` of the dataframe;
+0. Prepare the pipeline. this time, we will use all of the features : 
 
-    -   Create `X` dataframe and `y` Pandas Serie for training our model on prices per square meters.
+- Load the training and testing datasets `X_train, X_test, y_train, y_test` that we saved earlier. 
+  
 
-    -   Define the new training and testing datasets `X_train, X_test, y_train, y_test`.
-
-    -   Update the definition of our previous pipeline structure (with `TransformedTargetRegressor`) with a Gradient Boosting model with `random state` and `early stopping` parameters.
+- Update the definition of our previous pipeline structure (with `TransformedTargetRegressor`) with a Gradient Boosting model with `random state` and `early stopping` parameters.
 
 Note that we will tune the hyperparameters using the whole pipeline and this set of training and test sets.
 
@@ -168,21 +254,15 @@ Note that we will tune the hyperparameters using the whole pipeline and this set
 #| code-overflow: scroll
 #| eval: false
 
-# Split features / target
-X = df.drop(columns="price_sqm")
-y = df["price_sqm"]
-
-# Split train / test set
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=RANDOM_STATE
-)
+X_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_train.parquet')
+X_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/X_test.parquet')
+y_train = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_train.parquet')["price_sqm"]
+y_test  = pd.read_parquet('s3://projet-funathon/2026/project1/data/2_preprocessing/y_test.parquet')["price_sqm"]
 
 gb_pipeline = Pipeline([
     ('preprocessing', preprocessor),
     ('GB', HistGradientBoostingRegressor(
-        random_state=RANDOM_STATE, 
+        random_state=RANDOM_STATE,
         early_stopping=True))
 ])
 
@@ -197,7 +277,10 @@ model = TransformedTargetRegressor(
 
 1.  Define the parameter grid for `max_iter` and `learning_rate`, then run a `GridSearchCV` with 2 folds (to speed-up training time), `scoring="r2"` and `return_train_score=True`. Use `n_jobs=-1` to parallelise the search.
 
-Note that the grid search can take some time to compute (for example, about 40 minutes for 36 iterations) so don't choose `max_iter` above 1000 and more than 2 and 2 sets of values. **Be careful : usually, you have to choose more than 2 folds for the cross validation (often 5).**
+Note that the grid search can take some time to compute (for example, about 40 minutes for 36 iterations) so don't choose more than 5 sets of values for each parameter to tune. 
+You could also tune the hyperparameters bases on a sample of data to make it faster. 
+**Be careful : usually, you have to choose more than 2 folds for the cross validation (often 5).**
+We chose 2 folds of validation here to speed up training. 
 
 ::: {.callout-tip collapse="true" title="Hint"}
 When using `GridSearchCV`, the parameter names must match those of the estimator passed to it. Here we pass a `HistGradientBoostingRegressor` directly, so names are simply `max_iter` and `learning_rate`.
@@ -210,6 +293,7 @@ To retrieve all fold scores after fitting, use `cv_results_` — it is a dict th
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
+from sklearn.model_selection import GridSearchCV
 
 param_grid_step1 = {
     "regressor__GB__max_iter": [200, 500],
@@ -255,17 +339,24 @@ def results_to_df(results_: dict):
     matching_keys = params + ["mean_train_score", "mean_test_score"]
     rename_params = {key: key[pattern_len:] for key in params}
     rename_params["mean_train_score"] = "train_r2"
-    rename_params["mean_test_score"] = "val_r2"
-
+    rename_params["mean_test_score"] = "cross_val_r2"
     results_df_ = pd.DataFrame(results_)[matching_keys].rename(columns=rename_params)
 
-    return results_df_.sort_values("val_r2", ascending=False)
+    return results_df_.sort_values("cross_val_r2", ascending=False)
 
+
+```
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
 df_step1 = results_to_df(gs_step1.cv_results_)
 ```
 
 ::: callout-important
-In scikit-learn's `GridSearchCV`, the column `mean_test_score` refers to the **cross-validation score** computed on the held-out fold at each split — **not** to a score on `X_test`. The naming can be confusing: "test" here means "not used for training this fold". To avoid ambiguity we rename this column `val_r2` in the results DataFrame.
+In scikit-learn's `GridSearchCV`, the column `mean_test_score` refers to the **cross-validation score** computed on the held-out fold at each split — **not** to a score on `X_test`. The naming can be confusing: "test" here means "not used for training this fold". To avoid ambiguity we rename this column `cross_val_r2` in the results DataFrame.
 :::
 
 3.  Plot the mean train and validation R² on a single plot, with one line per `learning_rate`. Make it a function called `def plot_results_cv` which takes as input the hyperparameter to put on the X axis and the results as a dataframe from previous function.
@@ -281,8 +372,9 @@ In scikit-learn's `GridSearchCV`, the column `mean_test_score` refers to the **c
 #| eval: false
 import matplotlib.pyplot as plt
 
+
 def plot_results_cv(param_x:str, results_df_):
-    param_group_by = [column for column in results_df_.columns.to_list() if column not in [param_x, "val_r2", "train_r2"]][0]
+    param_group_by = [column for column in results_df_.columns.to_list() if column not in [param_x, "cross_val_r2", "train_r2"]][0]
     param_group_by_values = results_df_[param_group_by].unique()
 
 
@@ -291,7 +383,7 @@ def plot_results_cv(param_x:str, results_df_):
     for param_line in param_group_by_values:
         subset = results_df_[results_df_[param_group_by] == param_line].sort_values(param_x)
         line, = ax.plot(subset[param_x], subset["train_r2"], linestyle="--", marker="o", label=f"Train {param_group_by}={param_line}")
-        ax.plot(subset[param_x], subset["val_r2"], marker="x", color=line.get_color(), label=f"Val {param_group_by}={param_line}")
+        ax.plot(subset[param_x], subset["cross_val_r2"], marker="x", color=line.get_color(), label=f"Cross-val {param_group_by}={param_line}")
 
     ax.set_xlabel(f"{param_x}")
     ax.set_ylabel("R²")
@@ -301,18 +393,29 @@ def plot_results_cv(param_x:str, results_df_):
     plt.tight_layout()
     plt.show()
 
-plot_results_cv("max_iter", df_step1)
-```
 
-If the best value of `max_iter` is the largest value tested (1000), consider extending the grid before moving to the next step.
+```
 
 ```{python}
 #| code-fold: true
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
-BEST_ITER = 500  # to automatically catch the best hyperparameter, set to : gs_step1.best_params_["regressor__GB__max_iter"]
-BEST_LR = 0.2  # to automatically catch the best hyperparameter, set to : gs_step1.best_params_["regressor__GB__learning_rate"]
+plot_results_cv("max_iter", df_step1)
+```
+
+If the best value of `max_iter` is the largest value tested (500), consider extending the grid before moving to the next step.
+
+In the end, we chose the hyperparameters 1000 fot he number of iterations : going beyond doesn't improve the score. 
+For the learning rate, 0.3 is the maximum with which the model still learns. 
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+BEST_ITER = 1000  # to automatically catch the best hyperparameter, set to : gs_step1.best_params_["regressor__GB__max_iter"]
+BEST_LR = 0.3  # to automatically catch the best hyperparameter, set to : gs_step1.best_params_["regressor__GB__learning_rate"]
 ```
 
 #### Step 2 — Jointly optimise the tree structure
@@ -369,14 +472,21 @@ print(f"Best CV R² : {gs_step2.best_score_:.4f}")
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
-import numpy as np
 
 df_step2 = results_to_df(gs_step2.cv_results_)
 
 plot_results_cv("min_samples_leaf", df_step2)
+```
 
-BEST_DEPTH = gs_step2.best_params_["regressor__GB__max_depth"]
-BEST_MIN_LEAF = gs_step2.best_params_["regressor__GB__min_samples_leaf"]
+Let's set the max depth and minimal size of terminal leaves. 
+
+```{python}
+#| code-fold: true
+#| code-summary: See the solution
+#| code-overflow: scroll
+#| eval: false
+BEST_DEPTH = 20 # to automatically catch the best hyperparameter, set to : gs_step2.best_params_["regressor__GB__max_depth"]
+BEST_MIN_LEAF = 50 # to automatically catch the best hyperparameter, set to : gs_step2.best_params_["regressor__GB__min_samples_leaf"]
 ```
 
 #### Step 3 — Optimise the regularisation parameters
@@ -399,7 +509,6 @@ param_grid_step3 = {
 gb_pipeline_step3 = Pipeline([
     ('preprocessing', preprocessor),
     ('GB', HistGradientBoostingRegressor(
-        # max_iter=BEST_ITER,
         learning_rate=BEST_LR,
         max_depth=BEST_DEPTH,
         min_samples_leaf=BEST_MIN_LEAF,
@@ -430,9 +539,11 @@ plot_results_cv("l2_regularization", df_step3)
 
 print(f"Best params : {gs_step3.best_params_}")
 print(f"Best CV R² : {gs_step3.best_score_:.4f}")
+```
 
+```{python}
 
-BEST_L2 = gs_step3.best_params_["regressor__GB__l2_regularization"]
+BEST_L2 = 0 # to automatically catch the best hyperparameter, set to : gs_step3.best_params_["regressor__GB__l2_regularization"]
 
 ```
 
@@ -456,7 +567,7 @@ gb_final = HistGradientBoostingRegressor(
 )
 
 X = df.drop(columns=["price_sqm"])
-y = df["price_sqm"] 
+y = df["price_sqm"]
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
     test_size=0.2,
@@ -481,6 +592,31 @@ print("Final model trained.")
 
 ## Exercice 9: Evaluate the final Gradient Boosting model
 
+
+::: {.callout-tip title="If you're stuck - fetch back final GB model"}
+
+If you're stuck, you can fetch back the final trained model by executing the following code.
+The fetched model can then be used to predict any values and evaluate it. 
+
+
+```python
+from joblib import load
+import os
+import s3fs
+
+# Create filesystem object
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+FILE_PATH_S3 = "projet-funathon/2026/project1/models/gb_model_final.joblib" 
+
+with fs.open(FILE_PATH_S3, mode="rb") as model:
+    gb_model_final = load(model)
+
+```
+
+:::
+
+
 Now that the model has been tuned, evaluate its performance on the test set and compare it to the Random Forest baseline.
 
 1.  Compute **RMSE**, **MAE** and **R²** on both the training and test sets for the final gradient boosting model using our `print_metrics` function.
@@ -491,48 +627,34 @@ Now that the model has been tuned, evaluate its performance on the test set and 
 #| code-overflow: scroll
 #| eval: false
 
-model = gb_model_best
 list = [("train", X_train, y_train), ("test", X_test, y_test)]
 
 for split, X, y in list:
-    print_metrics(model, split, X, y)
+    print_metrics(gb_model_final, split, X, y)
 ```
 
-2.  Plot predicted values against actual values on the test set. 
+2.  Plot predicted values against actual values on the test set using the function `predicted_actual_plot` we defined in the section on [random forest](2-RF_model.qmd).
 
 ```{python}
 #| code-fold: true
 #| code-summary: See the solution
 #| code-overflow: scroll
 #| eval: false
-import matplotlib.pyplot as plt
 
-y_pred_test = gb_model_best.predict(X_test)
+y_pred_test = gb_model_final.predict(X_test)
+predicted_actual_plot(y_test, y_pred_test, "Gradient Boosting")
 
-fig, ax = plt.subplots(figsize=(7, 7))
-
-ax.scatter(y_test, y_pred_test, alpha=0.3, s=5, label="Predictions")
-
-lims = [min(y_test.min(), y_pred_test.min()),
-        max(y_test.max(), y_pred_test.max())]
-ax.plot(lims, lims, "r--", linewidth=1.5, label="Perfect prediction")
-
-ax.set_xlabel("Actual values")
-ax.set_ylabel("Predicted values")
-ax.set_title("Predicted vs. Actual values on the test set\n(Gradient Boosting)")
-ax.legend()
-plt.tight_layout()
-plt.show()
 ```
+
 
 # Summary
 
-Congrats 🎉! In this section, you have successfully 
+Congrats 🎉! In this section, you have successfully
 
-- seen the foundations of goosting models, 
-- trained a `HistGradientBoostingRegressor` with scikit-learn, 
+- seen the foundations of goosting models,
+- trained a `HistGradientBoostingRegressor` with scikit-learn,
 - optimized the `HistGradientBoostingRegressor` parameters through a gridsearch,
 - and finally, evaluated the best gradient boosting model for price per square meter predictions with the RMSE and MAE metrics.
 
-You can now have a look at how to train a [random forest model](2-RF_model.qmd). 
-Once you have trained both model, you can have a closer look at metrics with the [metrics section](3-metrics.qmd). 
+You can now have a look at how to train a [random forest model](2-RF_model.qmd).
+Once you have trained both model, you can have a closer look at metrics with the [metrics section](3-metrics.qmd).
