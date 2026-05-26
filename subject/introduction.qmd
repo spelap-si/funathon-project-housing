@@ -61,15 +61,26 @@ This project includes four steps (listed in the banner at the top of the page):
 -   model logging with MLflow;
 -   deployment.
 
+## Fall-back options
 **Every step is independent from the others**: you can start from any step if a previous one is too difficult. 
 A **fall-back callout note** at the beginning of each page provides the intermediate solution needed to proceed. 
 The **corresponding code is also available in the `intermediate_solutions/` folder for each step**.
 
+## Solution
 A **more advanced final script** is stored in the `solution/` folder.
 A `main.py` script calls on other sub-scripts, following the different steps of the project.
 To run it, just run `uv run solution/main.py` and it will execute all the steps at once. 
 
 To run the final API, run `uv run uvicorn solution.app:app --reload`. 
+
+## Computation time
+
+To speed up computation time, you **can work *after the pre-processing step* on a sample of the dataset** rather than the full data. 
+
+## Indicative results
+
+The **results shown throughout this training are indicative only** — they have been produced on a fraction of the dataset and with simplified hyperparameters. 
+It is therefore completely normal if your results differ from those displayed.
 
 # Project initialization
 
@@ -92,11 +103,11 @@ Launch a MLflow service by clicking on the following button below with your Onyx
 Decide on whether you want to work each one in your own repo or if you want to work in the same git repo for the whole team. 
 To improve collaborative work, we **recommend using a shared repo and working in different branches**. This way, you can use git's opportunities.  
 
-If you have only one repo, one person of your team has to fork the funathons's project on Github by clicking on [this link](https://github.com/AIML4OS/funathon-project1/fork). For convenience, **please not to change the repository name**. Write down the owner's name `OWNER_NAME` for the next step.
+If you have only one repo, one person of your team has to fork the funathons's project on Github by clicking on [this link](https://github.com/AIML4OS/funathon-project1/fork). For convenience, **please do not change the repository name**. Write down the owner's name `OWNER_NAME` for the next step.
 
 ![Forking a github project](../img/github_fork.png)
 
-If you decide to work each one in your repo, every one in the team forks the project in his/her own repo with his/her own owner's name.  
+If you decide to work each one in your repo, everyone in the team forks the project in his/her own repo with his/her own owner's name.  
 
 ## Open a VS Code on SSPCloud
 
@@ -171,7 +182,7 @@ To do this, open the command palette `Show and Run commands` or press `F1` or `C
 ## Running scripts
 
 You need to use `uv` to run a Python script using uv's managed environment. 
-`uv` will manage all the dependancies of your script. 
+`uv` will manage all the dependencies of your script. 
 To do so, you need to be in the working directory where the `pyproject.toml` file is stored.   
 
 To run the script in starting point for example, run the following command:
